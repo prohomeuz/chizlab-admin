@@ -5,6 +5,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bull';
 import appConfig from './config/config';
 import type { AppConfig } from './config/config';
+import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { MaterialsModule } from './materials/materials.module';
 import { CategoriesModule } from './categories/categories.module';
@@ -17,6 +18,7 @@ import { Admin } from './auth/admin.entity';
 import * as path from 'path';
 
 @Module({
+  controllers: [AppController],
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
