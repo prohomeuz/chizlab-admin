@@ -4,21 +4,19 @@
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| Phase 0 — Foundation | in-progress | plan agent running |
-| Phase 1 — Build | not-started | blocked on Phase 0 gate |
-| Phase 2 — Integration | not-started | blocked on Phase 1 gate |
-| Phase 3 — Test | not-started | blocked on Phase 2 gate |
-| Phase 4 — Review | not-started | blocked on Phase 3 gate |
+| Phase 0 — Foundation | passed-gate | Reviewer APPROVED. Commit: 4fd2865 |
+| Phase 1 — Build | passed-gate | Reviewer APPROVED. Backend: 69de16a. Frontend: 0 TS errors, clean build. |
+| Phase 2 — Integration | passed-gate | Reviewer APPROVED. docker-compose, Dockerfiles, env template, health endpoint. |
+| Phase 3 — Test | passed-gate | Reviewer APPROVED. 50 tests (29 backend Jest + 21 frontend Vitest), 0 failures. |
+| Phase 4 — Review | in-progress | final cross-cutting review: security, CLAUDE.md compliance, completeness |
 
-## Active Work (Phase 0)
+## Active Work (Phase 4)
 
-- **plan agent**: writing `docs/PLAN.md` + `packages/contracts/openapi.yaml` + TS types — IN PROGRESS
-- **design agent**: waiting on plan completion
-- **integration agent**: waiting on plan completion
+- **review agent**: cross-cutting security + compliance review — IN PROGRESS (2026-06-23)
 
 ## Next Action
 
-Wait for plan to complete, then launch design + integration in parallel. Then gate with reviewer.
+Complete Phase 4 review, commit final fixes, mark project done.
 
 ## Blockers
 

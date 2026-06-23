@@ -295,35 +295,5 @@ export interface PublicMaterialsQuery {
   search?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Re-exports — single import point for consumers
-// ---------------------------------------------------------------------------
-
-export type {
-  // Entities
-  Material,
-  PublicMaterial,
-  Category,
-  // Pagination
-  PaginationEnvelope,
-  // Material DTOs
-  CreateMaterialDto,
-  UpdateMaterialDto,
-  // Category DTOs
-  CreateCategoryDto,
-  UpdateCategoryDto,
-  // Auth
-  LoginRequest,
-  LoginResponse,
-  RefreshRequest,
-  RefreshResponse,
-  // Upload
-  UploadResponse,
-  // Internal
-  AiResultCallback,
-  // Errors
-  ErrorResponse,
-  // Query helpers
-  AdminMaterialsQuery,
-  PublicMaterialsQuery,
-};
+// All types above are already exported at their declaration site.
+// No re-export block needed — import directly from '@contracts/index'.

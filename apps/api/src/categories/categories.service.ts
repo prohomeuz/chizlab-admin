@@ -72,6 +72,6 @@ export class CategoriesService {
       throw new ConflictException('Category has associated materials and cannot be deleted');
     }
 
-    await this.categoryRepo.remove(cat);
+    await this.categoryRepo.softRemove(cat);
   }
 }
