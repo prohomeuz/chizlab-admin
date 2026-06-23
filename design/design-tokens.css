@@ -1,0 +1,197 @@
+/**
+ * chizlab.uz Design Tokens
+ *
+ * Extracted from the live chizlab.uz website CSS bundle
+ * (/_next/static/chunks/1ntuioj0uad2x.css as of 2026-06-23).
+ *
+ * Source tokens defined in Tailwind theme layer:
+ *   --color-primary: #003837
+ *   --color-bg:      #fffff6
+ *   --color-accent:  #b8926a
+ *   --color-dark:    #131313
+ *
+ * Typography: Inter (variable, Google Fonts), PPEditorialNew (serif, local),
+ *             SFProDisplay (system, local).
+ */
+
+:root {
+  /* =========================================================
+     COLORS — Brand palette (exact values from chizlab.uz CSS)
+     ========================================================= */
+
+  /* Primary: deep teal/dark green — used for headers, nav bg, primary buttons */
+  --color-primary:          #003837;
+  --color-primary-dark:     #002726;
+  --color-primary-light:    #004e4c;
+  --color-primary-muted:    rgba(0, 56, 55, 0.08);
+
+  /* Accent: warm terracotta/gold — used for highlights, CTAs, badges */
+  --color-accent:           #b8926a;
+  --color-accent-dark:      #9a7555;
+  --color-accent-light:     #d4b090;
+  --color-accent-muted:     rgba(184, 146, 106, 0.15);
+
+  /* Background: warm off-white — page/panel background */
+  --color-bg:               #fffff6;
+  --color-bg-elevated:      #ffffff;
+  --color-bg-sunken:        #f5f5e8;
+
+  /* Dark: near-black — used for dark sections, footer */
+  --color-dark:             #131313;
+  --color-dark-overlay:     #0a0a0a;
+
+  /* Text */
+  --color-text-primary:     #131313;
+  --color-text-secondary:   rgba(19, 19, 19, 0.6);
+  --color-text-muted:       rgba(19, 19, 19, 0.4);
+  --color-text-on-primary:  #fffff6;
+  --color-text-on-dark:     #fffff6;
+  --color-text-on-accent:   #ffffff;
+
+  /* Neutrals — for borders, dividers, table stripes */
+  --color-border:           rgba(19, 19, 19, 0.12);
+  --color-border-strong:    rgba(19, 19, 19, 0.24);
+  --color-surface:          #ffffff;
+  --color-surface-hover:    #f8f8f0;
+
+  /* Overlays */
+  --color-overlay-light:    rgba(255, 255, 246, 0.3);
+  --color-overlay-dark:     rgba(0, 0, 0, 0.3);
+
+  /* Status colors (admin-specific — WCAG AA against white) */
+  --color-status-active:        #006b3c;   /* green */
+  --color-status-active-bg:     #e6f4ed;
+  --color-status-pending:       #92550a;   /* amber */
+  --color-status-pending-bg:    #fef3e2;
+  --color-status-draft:         #4a5568;   /* slate */
+  --color-status-draft-bg:      #edf2f7;
+  --color-status-needs-review:  #9b2c2c;   /* red */
+  --color-status-needs-review-bg: #fff5f5;
+
+  /* Focus ring */
+  --color-focus-ring:       #b8926a;
+
+  /* =========================================================
+     TYPOGRAPHY
+     ========================================================= */
+
+  /* Font families — from @font-face declarations on chizlab.uz */
+  --font-inter:       "Inter", "Inter Fallback", Arial, Helvetica, sans-serif;
+  --font-editorial:   "PPEditorialNew", Georgia, serif;
+  --font-sf:          "SFProDisplay", system-ui, sans-serif;
+
+  /* Font sizes — full scale used on chizlab.uz */
+  --text-xs:    13px;
+  --text-sm:    14px;
+  --text-base:  16px;
+  --text-md:    18px;
+  --text-lg:    20px;
+  --text-xl:    24px;
+  --text-2xl:   36px;
+  --text-3xl:   44px;
+  --text-4xl:   52px;
+  --text-5xl:   60px;
+  --text-6xl:   80px;
+
+  /* Font weights */
+  --font-weight-thin:       275;
+  --font-weight-normal:     400;
+  --font-weight-medium:     500;
+  --font-weight-bold:       700;
+
+  /* Line heights */
+  --leading-tight:    1.1;
+  --leading-snug:     1.2;
+  --leading-compact:  1.3;
+  --leading-relaxed:  1.4;
+  --leading-normal:   1.5;
+  --leading-loose:    1.55;
+
+  /* Letter spacing */
+  --tracking-tight:   -0.02em;
+  --tracking-tighter: -0.4px;
+  --tracking-wide:    0.04em;
+  --tracking-wider:   0.06em;
+
+  /* =========================================================
+     SPACING — based on Tailwind --spacing: 0.25rem scale
+     ========================================================= */
+  --spacing-1:   0.25rem;   /* 4px  */
+  --spacing-2:   0.5rem;    /* 8px  */
+  --spacing-3:   0.75rem;   /* 12px */
+  --spacing-4:   1rem;      /* 16px */
+  --spacing-5:   1.25rem;   /* 20px */
+  --spacing-6:   1.5rem;    /* 24px */
+  --spacing-8:   2rem;      /* 32px */
+  --spacing-10:  2.5rem;    /* 40px */
+  --spacing-12:  3rem;      /* 48px */
+  --spacing-14:  3.5rem;    /* 56px */
+  --spacing-16:  4rem;      /* 64px */
+  --spacing-20:  5rem;      /* 80px */
+
+  /* =========================================================
+     BORDER RADIUS
+     ========================================================= */
+  --radius-sm:    0.25rem;   /* 4px  — subtle rounding */
+  --radius-md:    0.5rem;    /* 8px  — cards, inputs */
+  --radius-lg:    0.75rem;   /* 12px — modals, panels */
+  --radius-xl:    1rem;      /* 16px — large cards */
+  --radius-full:  9999px;    /* pill — tags, status badges */
+
+  /* =========================================================
+     SHADOWS
+     ========================================================= */
+  --shadow-sm:   0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+  --shadow-md:   0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+  --shadow-lg:   0 10px 15px -3px rgba(0, 0, 0, 0.10), 0 4px 6px -4px rgba(0, 0, 0, 0.10);
+  --shadow-card: 0 2px 12px 0 rgba(0, 56, 55, 0.07);
+  --shadow-modal: 0 20px 60px -10px rgba(0, 0, 0, 0.25);
+
+  /* =========================================================
+     MOTION / TRANSITIONS — from chizlab.uz CSS
+     ========================================================= */
+  --duration-fast:    0.15s;
+  --duration-normal:  0.2s;
+  --duration-slow:    0.3s;
+  --ease-default:     cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in:          cubic-bezier(0.4, 0, 1, 1);
+  --ease-out:         cubic-bezier(0, 0, 0.2, 1);
+
+  /* =========================================================
+     CUSTOM CURSOR — from chizlab.uz (cursor:none on html/body)
+     ========================================================= */
+  /* Applied via JS component; see brand application rules in UI-SPEC.md */
+  --cursor-default-src: url('/brand/cursor.svg');
+  --cursor-click-src:   url('/brand/click.svg');
+
+  /* =========================================================
+     LAYOUT
+     ========================================================= */
+  --sidebar-width:      240px;
+  --header-height:      65px;
+  --content-max-width:  1280px;
+  --table-row-height:   56px;
+
+  /* =========================================================
+     Z-INDEX SCALE — mirroring chizlab.uz z-index usage
+     ========================================================= */
+  --z-base:     0;
+  --z-raised:   10;
+  --z-overlay:  50;
+  --z-modal:    100;
+  --z-toast:    200;
+  --z-cursor:   9999;
+}
+
+/* =========================================================
+   DARK SURFACE OVERRIDES
+   Used for the primary nav sidebar and dark panels (bg-dark).
+   Not a full dark mode — just specific surfaces.
+   ========================================================= */
+[data-surface="dark"] {
+  --color-text-primary:    #fffff6;
+  --color-text-secondary:  rgba(255, 255, 246, 0.6);
+  --color-text-muted:      rgba(255, 255, 246, 0.4);
+  --color-border:          rgba(255, 255, 246, 0.12);
+  --color-surface-hover:   rgba(255, 255, 246, 0.06);
+}

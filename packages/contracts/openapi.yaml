@@ -1,0 +1,1196 @@
+openapi: 3.1.0
+
+info:
+  title: chizlab-admin API
+  version: 1.0.0
+  description: |
+    Educational-materials storage system API.
+
+    **Two route groups:**
+    - `/api/admin/*` — full CRUD, JWT-protected. Documented here under the `admin` tag.
+    - `/api/public/*` — GET-only, protected by `X-API-Key`. Documented here under the `public` tag.
+
+    **Internal callback** (`/internal/ai-result`) is documented for developer reference only.
+    It is never publicly routed.
+
+    **Separate Swagger UIs:**
+    - Admin: `GET /docs/admin`
+    - Public: `GET /docs/public`
+
+servers:
+  - url: /
+    description: Local / Docker
+
+# ---------------------------------------------------------------------------
+# Security schemes
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Short-lived JWT access token returned by POST /api/admin/auth/login
+
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Public API key. Validated against PUBLIC_API_KEY env var.
+
+    InternalSecret:
+      type: apiKey
+      in: header
+      name: X-Internal-Secret
+      description: Shared secret for the AI-worker callback. Validated against INTERNAL_CALLBACK_SECRET env var.
+
+  # -------------------------------------------------------------------------
+  # Reusable schemas
+  # -------------------------------------------------------------------------
+  schemas:
+
+    # --- Enums ---------------------------------------------------------------
+
+    MaterialStatus:
+      type: string
+      enum:
+        - draft
+        - active
+        - pending
+        - needs_review
+      description: |
+        Lifecycle status of a material.
+        - `pending`      — newly created; AI analysis in progress.
+        - `active`       — AI analysis complete and isReady=true; visible on public API.
+        - `draft`        — hidden from public; admin is editing.
+        - `needs_review` — AI analysis failed after 3 retries; admin must complete fields.
+
+    # --- Core entities -------------------------------------------------------
+
+    Material:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - categoryId
+        - mediaUrl
+        - tags
+        - status
+        - isReady
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Primary key.
+        title:
+          type: string
+          description: Material title. AI-fillable.
+        description:
+          type: string
+          description: Plain-text description. AI-fillable.
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Foreign key to categories.id. Nullable until set.
+        mediaUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: URL of the uploaded media file (MinIO). Nullable until uploaded.
+        tags:
+          type: array
+          items:
+            type: string
+          description: Free-text tags. AI-fillable.
+        status:
+          $ref: '#/components/schemas/MaterialStatus'
+        isReady:
+          type: boolean
+          description: True only after successful AI analysis.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            Soft-delete timestamp. Null means not deleted.
+            Omitted from public API responses.
+        embedding:
+          type: array
+          items:
+            type: number
+          nullable: true
+          description: |
+            pgvector embedding column for future semantic search.
+            Nullable until a vector is computed. Omitted from public API responses.
+
+    # Public-facing variant of Material (no deletedAt, no embedding)
+    PublicMaterial:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - categoryId
+        - mediaUrl
+        - tags
+        - status
+        - isReady
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+        mediaUrl:
+          type: string
+          format: uri
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: '#/components/schemas/MaterialStatus'
+        isReady:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Category:
+      type: object
+      required:
+        - id
+        - name
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Self-referencing parent. Null for root categories.
+        createdAt:
+          type: string
+          format: date-time
+
+    # --- Pagination envelope -------------------------------------------------
+
+    MaterialPaginationEnvelope:
+      type: object
+      required:
+        - items
+        - total
+        - limit
+        - offset
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Material'
+        total:
+          type: integer
+          description: Total number of records matching the filter (before pagination).
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    PublicMaterialPaginationEnvelope:
+      type: object
+      required:
+        - items
+        - total
+        - limit
+        - offset
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicMaterial'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    # --- DTOs ----------------------------------------------------------------
+
+    CreateMaterialDto:
+      type: object
+      description: |
+        All fields optional. A material is created with status=pending and isReady=false
+        if not specified. The AI worker fills title/description/tags after media analysis.
+      properties:
+        title:
+          type: string
+          maxLength: 512
+        description:
+          type: string
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+        mediaUrl:
+          type: string
+          format: uri
+          description: URL returned by POST /api/admin/upload. Set after uploading media.
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: '#/components/schemas/MaterialStatus'
+          description: Defaults to `pending` if omitted.
+
+    UpdateMaterialDto:
+      type: object
+      description: All fields optional. Only provided fields are updated.
+      properties:
+        title:
+          type: string
+          maxLength: 512
+        description:
+          type: string
+        categoryId:
+          type: string
+          format: uuid
+          nullable: true
+        mediaUrl:
+          type: string
+          format: uri
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        status:
+          $ref: '#/components/schemas/MaterialStatus'
+
+    CreateCategoryDto:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 256
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Omit or set null to create a root category.
+
+    UpdateCategoryDto:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 256
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+
+    # --- Auth DTOs -----------------------------------------------------------
+
+    LoginRequest:
+      type: object
+      required:
+        - pin
+      properties:
+        pin:
+          type: string
+          pattern: '^\d{8}$'
+          description: Exactly 8 numeric digits.
+          example: '12345678'
+
+    LoginResponse:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: Short-lived JWT access token.
+        refreshToken:
+          type: string
+          description: Long-lived refresh token (opaque or JWT).
+        expiresIn:
+          type: integer
+          description: Access token TTL in seconds.
+          example: 900
+
+    RefreshRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+
+    RefreshResponse:
+      type: object
+      required:
+        - accessToken
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: integer
+          example: 900
+
+    # --- Upload --------------------------------------------------------------
+
+    UploadResponse:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Public MinIO URL of the uploaded file.
+
+    # --- AI callback ---------------------------------------------------------
+
+    AiResultCallback:
+      type: object
+      required:
+        - materialId
+        - success
+      properties:
+        materialId:
+          type: string
+          format: uuid
+        success:
+          type: boolean
+          description: True if AI analysis succeeded; false on terminal failure.
+        title:
+          type: string
+          description: AI-generated title. Present only when success=true.
+          nullable: true
+        description:
+          type: string
+          description: AI-generated plain-text description. Present only when success=true.
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+          description: AI-generated tags. Present only when success=true.
+          nullable: true
+        suggestedCategoryId:
+          type: string
+          format: uuid
+          description: Category UUID suggested by AI. Backend validates before applying.
+          nullable: true
+        error:
+          type: string
+          description: Human-readable error message. Present only when success=false.
+          nullable: true
+
+    # --- Errors --------------------------------------------------------------
+
+    ErrorResponse:
+      type: object
+      required:
+        - statusCode
+        - message
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        message:
+          type: string
+          description: Human-readable error description.
+          example: Validation failed
+        error:
+          type: string
+          description: Short error code / category.
+          example: Bad Request
+          nullable: true
+
+  # -------------------------------------------------------------------------
+  # Reusable parameters
+  # -------------------------------------------------------------------------
+  parameters:
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Number of records to return.
+
+    OffsetParam:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      description: Number of records to skip.
+
+    CategoryIdParam:
+      name: categoryId
+      in: query
+      required: false
+      schema:
+        type: string
+        format: uuid
+      description: Filter by category UUID.
+
+    TagsParam:
+      name: tags
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Comma-separated list of tags to filter by (AND logic).
+      example: uzbek,history
+
+    SearchParam:
+      name: search
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Full-text search query (PostgreSQL tsvector).
+
+    MaterialIdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Material UUID.
+
+    CategoryIdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Category UUID.
+
+  # -------------------------------------------------------------------------
+  # Reusable responses
+  # -------------------------------------------------------------------------
+  responses:
+    UnauthorizedError:
+      description: Missing or invalid authentication credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 401
+            message: Unauthorized
+            error: Unauthorized
+
+    ForbiddenError:
+      description: Authenticated but lacks permission.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 403
+            message: Forbidden
+            error: Forbidden
+
+    NotFoundError:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 404
+            message: Material not found
+            error: Not Found
+
+    ValidationError:
+      description: Request body or query parameters failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 400
+            message: pin must be exactly 8 digits
+            error: Bad Request
+
+    ConflictError:
+      description: Business-logic conflict (e.g. deleting a category that has materials).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 409
+            message: Category has associated materials and cannot be deleted
+            error: Conflict
+
+    TooManyRequestsError:
+      description: Rate limit exceeded (PIN lockout).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            statusCode: 429
+            message: Account locked. Try again after 15 minutes.
+            error: Too Many Requests
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+
+  # ==========================================================================
+  # AUTH
+  # ==========================================================================
+
+  /api/admin/auth/login:
+    post:
+      tags:
+        - admin-auth
+      summary: Admin PIN login
+      description: |
+        Authenticate with an 8-digit PIN.
+        After 5 consecutive failed attempts the account is locked for 15 minutes.
+      operationId: adminLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              pin: '12345678'
+      responses:
+        '200':
+          description: Authentication successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Incorrect PIN.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 401
+                message: Invalid PIN
+                error: Unauthorized
+        '429':
+          $ref: '#/components/responses/TooManyRequestsError'
+
+  /api/admin/auth/refresh:
+    post:
+      tags:
+        - admin-auth
+      summary: Refresh access token
+      description: Exchange a valid refresh token for a new access token.
+      operationId: adminRefreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: New access token issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Refresh token is invalid or expired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 401
+                message: Refresh token expired or invalid
+                error: Unauthorized
+
+  /api/admin/auth/logout:
+    post:
+      tags:
+        - admin-auth
+      summary: Logout (invalidate refresh token)
+      description: Invalidates the refresh token stored server-side. Access token remains valid until it expires naturally.
+      operationId: adminLogout
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Logout successful; no body.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  # ==========================================================================
+  # ADMIN — MATERIALS
+  # ==========================================================================
+
+  /api/admin/materials:
+    get:
+      tags:
+        - admin-materials
+      summary: List materials (admin)
+      description: |
+        Returns paginated materials. Admin sees all statuses and soft-deleted records
+        are excluded by default (pass includeDeleted=true to include them).
+      operationId: adminListMaterials
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+        - $ref: '#/components/parameters/CategoryIdParam'
+        - $ref: '#/components/parameters/TagsParam'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/MaterialStatus'
+          description: Filter by lifecycle status.
+        - $ref: '#/components/parameters/SearchParam'
+        - name: includeDeleted
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: When true, include soft-deleted materials.
+      responses:
+        '200':
+          description: Paginated list of materials.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialPaginationEnvelope'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - admin-materials
+      summary: Create material (admin)
+      description: |
+        Create a new material. If `mediaUrl` is provided, the AI worker job is enqueued
+        immediately. Material is created with `status=pending` and `isReady=false` unless
+        overridden in the body.
+      operationId: adminCreateMaterial
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMaterialDto'
+            example:
+              mediaUrl: 'https://storage.chizlab.uz/media/sample.pdf'
+              categoryId: '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+              tags:
+                - uzbek
+                - history
+      responses:
+        '201':
+          description: Material created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Material'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/admin/materials/{id}:
+    get:
+      tags:
+        - admin-materials
+      summary: Get material by ID (admin)
+      operationId: adminGetMaterial
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MaterialIdPath'
+      responses:
+        '200':
+          description: Material found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Material'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      tags:
+        - admin-materials
+      summary: Update material (admin)
+      description: Partial update — only provided fields are updated.
+      operationId: adminUpdateMaterial
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MaterialIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMaterialDto'
+      responses:
+        '200':
+          description: Material updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Material'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - admin-materials
+      summary: Soft-delete material (admin)
+      description: Sets `deletedAt` to the current timestamp. The record is never hard-deleted.
+      operationId: adminDeleteMaterial
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MaterialIdPath'
+      responses:
+        '204':
+          description: Material soft-deleted successfully; no body.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  # ==========================================================================
+  # ADMIN — CATEGORIES
+  # ==========================================================================
+
+  /api/admin/categories:
+    get:
+      tags:
+        - admin-categories
+      summary: List all categories (admin)
+      description: Returns a flat list of all categories (including root and child nodes). Use `parentId` to reconstruct the tree client-side.
+      operationId: adminListCategories
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Flat list of all categories.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+    post:
+      tags:
+        - admin-categories
+      summary: Create category (admin)
+      operationId: adminCreateCategory
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryDto'
+            example:
+              name: Tarix
+              parentId: null
+      responses:
+        '201':
+          description: Category created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/admin/categories/{id}:
+    get:
+      tags:
+        - admin-categories
+      summary: Get category by ID (admin)
+      operationId: adminGetCategory
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CategoryIdPath'
+      responses:
+        '200':
+          description: Category found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    put:
+      tags:
+        - admin-categories
+      summary: Update category (admin)
+      operationId: adminUpdateCategory
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CategoryIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCategoryDto'
+      responses:
+        '200':
+          description: Category updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+    delete:
+      tags:
+        - admin-categories
+      summary: Delete category (admin)
+      description: |
+        Deletes a category. Returns 409 if any non-deleted material references this category.
+        Cascades to child categories only if they have no materials.
+      operationId: adminDeleteCategory
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CategoryIdPath'
+      responses:
+        '204':
+          description: Category deleted; no body.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+
+  # ==========================================================================
+  # ADMIN — UPLOAD
+  # ==========================================================================
+
+  /api/admin/upload:
+    post:
+      tags:
+        - admin-upload
+      summary: Upload media file (admin)
+      description: |
+        Upload a single media file (image, video, PDF, audio) to MinIO.
+        Maximum file size: 100 MB.
+        Returns the public URL of the uploaded file. Use this URL as `mediaUrl`
+        when creating or updating a Material.
+      operationId: adminUploadMedia
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The media file to upload. Max 100 MB.
+      responses:
+        '201':
+          description: File uploaded successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+              example:
+                url: 'https://storage.chizlab.uz/media/abc123.pdf'
+        '400':
+          description: No file provided or file exceeds size limit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 400
+                message: File exceeds maximum size of 100 MB
+                error: Bad Request
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '413':
+          description: Payload too large.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 413
+                message: File too large
+                error: Payload Too Large
+
+  # ==========================================================================
+  # PUBLIC API
+  # ==========================================================================
+
+  /api/public/materials:
+    get:
+      tags:
+        - public-materials
+      summary: List active materials (public)
+      description: |
+        Returns paginated materials visible to the external platform.
+        **Hard-coded filter (not client-controllable):** `status=active AND isReady=true AND deletedAt IS NULL`.
+        Supports pagination, category filter, tag filter, and full-text search.
+        Does NOT expose `deletedAt` field in response objects.
+      operationId: publicListMaterials
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/OffsetParam'
+        - $ref: '#/components/parameters/CategoryIdParam'
+        - $ref: '#/components/parameters/TagsParam'
+        - $ref: '#/components/parameters/SearchParam'
+      responses:
+        '200':
+          description: Paginated list of active, ready materials.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicMaterialPaginationEnvelope'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  /api/public/materials/{id}:
+    get:
+      tags:
+        - public-materials
+      summary: Get single active material (public)
+      description: |
+        Returns a single material only if `status=active AND isReady=true AND deletedAt IS NULL`.
+        Returns 404 for any other state (draft, pending, deleted, etc.).
+      operationId: publicGetMaterial
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MaterialIdPath'
+      responses:
+        '200':
+          description: Material found and is active + ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicMaterial'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Material not found, not active, not ready, or soft-deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 404
+                message: Material not found
+                error: Not Found
+
+  /api/public/categories:
+    get:
+      tags:
+        - public-categories
+      summary: List all categories (public)
+      description: Returns all non-deleted categories as a flat list. Clients reconstruct the tree via `parentId`.
+      operationId: publicListCategories
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Flat list of categories.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+
+  # ==========================================================================
+  # INTERNAL — AI CALLBACK
+  # ==========================================================================
+
+  /internal/ai-result:
+    post:
+      tags:
+        - internal
+      summary: AI worker result callback (internal)
+      description: |
+        **INTERNAL ENDPOINT — never publicly routed.**
+        Called by the Python AI worker after media analysis completes (success or terminal failure).
+
+        On success: updates material with AI-filled fields, sets `status=active`, `isReady=true`.
+        On failure: sets `status=needs_review`, `isReady=false`.
+
+        Protected by `X-Internal-Secret` header validated against `INTERNAL_CALLBACK_SECRET` env var.
+      operationId: internalAiResult
+      security:
+        - InternalSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiResultCallback'
+            examples:
+              success:
+                summary: AI analysis succeeded
+                value:
+                  materialId: '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+                  success: true
+                  title: 'Uzbekiston tarixi darsligi'
+                  description: 'Qadimgi Uzbekiston tarixi haqidagi darslik'
+                  tags:
+                    - tarix
+                    - uzbekiston
+                  suggestedCategoryId: '7fa85f64-5717-4562-b3fc-2c963f66afa9'
+              failure:
+                summary: AI analysis failed after retries
+                value:
+                  materialId: '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+                  success: false
+                  error: 'Gemini API timeout after 3 retries'
+      responses:
+        '200':
+          description: Callback processed successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+        '400':
+          description: Invalid payload or material ID not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid X-Internal-Secret header.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 401
+                message: Invalid internal secret
+                error: Unauthorized
+
+# ---------------------------------------------------------------------------
+# Tags (for grouping in Swagger UI)
+# ---------------------------------------------------------------------------
+tags:
+  - name: admin-auth
+    description: Admin authentication — PIN login, token refresh, logout.
+  - name: admin-materials
+    description: Materials CRUD — admin surface (all statuses visible).
+  - name: admin-categories
+    description: Category tree management — admin surface.
+  - name: admin-upload
+    description: Media file upload to MinIO — admin surface.
+  - name: public-materials
+    description: Read-only materials — public surface (active + ready only).
+  - name: public-categories
+    description: Read-only categories — public surface.
+  - name: internal
+    description: Internal endpoints — not publicly routed; AI worker callback.
