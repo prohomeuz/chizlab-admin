@@ -46,9 +46,10 @@ export class InitSchema1700000000000 implements MigrationInterface {
     // Materials table
     // -------------------------------------------------------------------------
     await queryRunner.query(`
-      CREATE TYPE IF NOT EXISTS "material_status_enum" AS ENUM (
-        'draft', 'active', 'pending', 'needs_review'
-      )
+      DO $$ BEGIN
+        CREATE TYPE "material_status_enum" AS ENUM ('draft', 'active', 'pending', 'needs_review');
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$
     `);
 
     await queryRunner.query(`
@@ -72,24 +73,39 @@ export class InitSchema1700000000000 implements MigrationInterface {
     `);
 
     // -------------------------------------------------------------------------
-    // tsvector search_vector column + GIN index
+    // tsvector search_vector column + GIN index + trigger
+    // GENERATED ALWAYS AS is not used because array_to_string is STABLE, not
+    // IMMUTABLE in PostgreSQL. A BEFORE INSERT OR UPDATE trigger is used instead.
     // -------------------------------------------------------------------------
     await queryRunner.query(`
       ALTER TABLE "materials"
       ADD COLUMN IF NOT EXISTS "search_vector" TSVECTOR
-        GENERATED ALWAYS AS (
-          to_tsvector(
-            'simple',
-            coalesce(title, '') || ' ' ||
-            coalesce(description, '') || ' ' ||
-            coalesce(array_to_string(tags, ' '), '')
-          )
-        ) STORED
     `);
 
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS "IDX_materials_search_vector"
       ON "materials" USING GIN ("search_vector")
+    `);
+
+    await queryRunner.query(`
+      CREATE OR REPLACE FUNCTION materials_search_vector_update()
+      RETURNS trigger AS $$
+      BEGIN
+        NEW.search_vector :=
+          to_tsvector('simple'::regconfig,
+            coalesce(NEW.title, '') || ' ' ||
+            coalesce(NEW.description, '') || ' ' ||
+            coalesce(array_to_string(NEW.tags, ' '), '')
+          );
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `);
+
+    await queryRunner.query(`
+      CREATE TRIGGER materials_search_vector_trigger
+      BEFORE INSERT OR UPDATE ON "materials"
+      FOR EACH ROW EXECUTE FUNCTION materials_search_vector_update()
     `);
 
     // -------------------------------------------------------------------------

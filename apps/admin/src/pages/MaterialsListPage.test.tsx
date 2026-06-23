@@ -18,7 +18,7 @@ import type { Material, MaterialStatus } from '@contracts/index';
 type QueryState = { data?: { items: Array<{ status: MaterialStatus }> } };
 
 function refetchIntervalSelector(q: QueryState): number | false {
-  const items = q.state?.data?.items ?? [];
+  const items = q.data?.items ?? [];
   return items.some((m) => m.status === 'pending') ? 5000 : false;
 }
 

@@ -29,7 +29,7 @@ services:
     networks:
       - app_network
     ports:
-      - "5432:5432"
+      - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -76,8 +76,8 @@ services:
     networks:
       - app_network
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # MinIO web console
+      - "9100:9000"   # S3 API
+      - "9101:9001"   # MinIO web console
     volumes:
       - minio_data:/data
     command: server /data --console-address :9001
@@ -208,7 +208,8 @@ services:
   # ----------------------------------------------------------
   admin:
     build:
-      context: ../apps/admin
+      context: ..
+      dockerfile: apps/admin/Dockerfile
     container_name: chizlab_admin
     restart: unless-stopped
     networks:

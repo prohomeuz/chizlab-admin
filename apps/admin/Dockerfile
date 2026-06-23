@@ -1,20 +1,32 @@
+# Build context: repo root (set in docker-compose)
+# This lets us copy packages/contracts/ which is outside apps/admin/
+
 # ── Build stage ──────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
+# Copy contracts (needed for @contracts alias resolution)
+COPY packages/contracts ./packages/contracts
+
+# Copy design tokens (imported via relative path from apps/admin/src/styles/)
+COPY design ./design
+
+# Install admin dependencies
+COPY apps/admin/package.json apps/admin/package-lock.json* ./apps/admin/
+WORKDIR /app/apps/admin
 RUN npm ci
 
-COPY . .
+# Copy rest of admin source
+COPY apps/admin/ .
+
+# Build (vite alias ../../packages/contracts → /app/packages/contracts ✓)
 RUN npm run build
 
 # ── Production stage (nginx) ──────────────────────────────────────────────────
 FROM nginx:alpine AS production
 
-# Copy built SPA assets
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/apps/admin/dist /usr/share/nginx/html
 
-# Write SPA-aware nginx config (try_files for client-side routing)
 RUN printf 'server {\n\
   listen 80;\n\
   root /usr/share/nginx/html;\n\
