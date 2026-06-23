@@ -191,8 +191,8 @@ services:
       api:
         condition: service_healthy
     environment:
-      REDIS_URL: ${REDIS_URL}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_BUCKET: ${MINIO_BUCKET}
@@ -205,11 +205,10 @@ services:
 
   # ----------------------------------------------------------
   # React Admin Panel (static build served by nginx)
-  # TODO: Phase 2 — Dockerfile will be created at apps/admin/Dockerfile
   # ----------------------------------------------------------
   admin:
     build:
-      context: ../apps/admin    # TODO: Phase 2 — React + Vite admin panel Dockerfile
+      context: ../apps/admin
     container_name: chizlab_admin
     restart: unless-stopped
     networks:
