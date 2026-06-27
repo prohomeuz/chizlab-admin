@@ -1,187 +1,300 @@
-import React, { useRef, useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 
 const PIN_LENGTH = 8;
 
+function BackspaceIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
+      strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" />
+      <line x1="18" y1="9" x2="14" y2="15" />
+      <line x1="14" y1="9" x2="18" y2="15" />
+    </svg>
+  );
+}
+
+function WarningIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+      strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="8" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="12.01" y2="16" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+      strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
+const KEY_BG     = '#f5f5e8';
+const KEY_HOVER  = 'rgba(0,56,55,0.09)';
+const KEY_ACTIVE = 'rgba(0,56,55,0.16)';
+
+function KeypadButton({
+  children, onClick, disabled, label,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  label?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      style={{
+        height: 60,
+        background: KEY_BG,
+        border: 'none',
+        borderRadius: 10,
+        fontSize: 20,
+        fontWeight: 500,
+        color: disabled ? 'rgba(19,19,19,0.25)' : '#131313',
+        fontFamily: "'SFProDisplay', system-ui, sans-serif",
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'background 0.1s ease, transform 0.08s ease',
+        userSelect: 'none',
+      }}
+      onMouseEnter={e => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = KEY_HOVER; }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLButtonElement).style.background = KEY_BG;
+        (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)';
+      }}
+      onMouseDown={e => {
+        if (!disabled) {
+          (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.91)';
+          (e.currentTarget as HTMLButtonElement).style.background = KEY_ACTIVE;
+        }
+      }}
+      onMouseUp={e => {
+        (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)';
+        if (!disabled) (e.currentTarget as HTMLButtonElement).style.background = KEY_HOVER;
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function LoginPage() {
-  const [digits, setDigits] = useState<string[]>(Array(PIN_LENGTH).fill(''));
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [digits, setDigits]         = useState<string[]>(Array(PIN_LENGTH).fill(''));
+  const [error, setError]           = useState('');
+  const [errorType, setErrorType]   = useState<'error' | 'lockout'>('error');
+  const [loading, setLoading]       = useState(false);
+  const [shakeKey, setShakeKey]     = useState(0);
   const [lockoutUntil, setLockoutUntil] = useState<Date | null>(null);
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
   const { login } = useAuth();
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
 
-  const pin = digits.join('');
-  const pinComplete = pin.length === PIN_LENGTH && digits.every((d) => d !== '');
-  const isLocked = lockoutUntil !== null && lockoutUntil > new Date();
+  const filledCount = digits.filter(d => d !== '').length;
+  const isLocked    = lockoutUntil !== null && lockoutUntil > new Date();
+  const submittingRef = useRef(false);
 
-  const focusBox = useCallback((idx: number) => {
-    inputRefs.current[idx]?.focus();
-  }, []);
-
-  const handleDigitChange = (idx: number, val: string) => {
-    if (!/^\d?$/.test(val)) return;
-    const updated = [...digits];
-    updated[idx] = val;
-    setDigits(updated);
-    if (val && idx < PIN_LENGTH - 1) {
-      focusBox(idx + 1);
-    }
-    setError('');
-  };
-
-  const handleKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace') {
-      if (digits[idx]) {
-        const updated = [...digits];
-        updated[idx] = '';
-        setDigits(updated);
-      } else if (idx > 0) {
-        const updated = [...digits];
-        updated[idx - 1] = '';
-        setDigits(updated);
-        focusBox(idx - 1);
-      }
-    } else if (e.key === 'ArrowLeft' && idx > 0) {
-      focusBox(idx - 1);
-    } else if (e.key === 'ArrowRight' && idx < PIN_LENGTH - 1) {
-      focusBox(idx + 1);
-    }
-  };
-
-  const handlePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, PIN_LENGTH);
-    const updated = Array(PIN_LENGTH).fill('');
-    for (let i = 0; i < text.length; i++) updated[i] = text[i] ?? '';
-    setDigits(updated);
-    focusBox(Math.min(text.length, PIN_LENGTH - 1));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!pinComplete || isLocked || loading) return;
+  // --- Auto-submit when all 8 digits filled ---
+  useEffect(() => {
+    if (filledCount !== PIN_LENGTH || isLocked || submittingRef.current) return;
+    submittingRef.current = true;
+    const pin = digits.join('');
     setLoading(true);
     setError('');
-    try {
-      await login(pin);
-      navigate('/materials', { replace: true });
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        const status = err.response?.status;
-        if (status === 429) {
-          // Lockout for 15 minutes
-          const until = new Date(Date.now() + 15 * 60 * 1000);
-          setLockoutUntil(until);
-          setError("Urinishlar tugadi. 15 daqiqa kuting.");
+    login(pin)
+      .then(() => {
+        navigate('/materials', { replace: true });
+      })
+      .catch((err: unknown) => {
+        submittingRef.current = false;
+        setLoading(false);
+        setDigits(Array(PIN_LENGTH).fill(''));
+        setShakeKey(k => k + 1);
+        if (axios.isAxiosError(err)) {
+          if (err.response?.status === 429) {
+            setLockoutUntil(new Date(Date.now() + 15 * 60 * 1000));
+            setErrorType('lockout');
+            setError("Juda ko'p urinish. 15 daqiqa kuting.");
+          } else {
+            setErrorType('error');
+            setError("Noto'g'ri PIN. Qayta urinib ko'ring.");
+          }
         } else {
-          setError("Noto'g'ri PIN. Qayta urinib ko'ring.");
+          setErrorType('error');
+          setError("Ulanishda xatolik. Qayta urinib ko'ring.");
         }
-      } else {
-        setError("Xatolik yuz berdi. Qayta urinib ko'ring.");
-      }
-      setDigits(Array(PIN_LENGTH).fill(''));
-      focusBox(0);
-    } finally {
-      setLoading(false);
-    }
-  };
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filledCount]);
+
+  // --- Add digit ---
+  const addDigit = useCallback((d: string) => {
+    if (isLocked || loading) return;
+    setDigits(prev => {
+      const idx = prev.findIndex(v => v === '');
+      if (idx === -1) return prev;
+      const next = [...prev];
+      next[idx] = d;
+      return next;
+    });
+  }, [isLocked, loading]);
+
+  // --- Remove last digit ---
+  const removeDigit = useCallback(() => {
+    if (isLocked || loading) return;
+    setDigits(prev => {
+      const lastIdx = prev.map((v, i) => (v !== '' ? i : -1)).filter(i => i !== -1).pop();
+      if (lastIdx === undefined) return prev;
+      const next = [...prev];
+      next[lastIdx] = '';
+      return next;
+    });
+  }, [isLocked, loading]);
+
+  // --- Keyboard support ---
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (/^[0-9]$/.test(e.key)) addDigit(e.key);
+      else if (e.key === 'Backspace') removeDigit();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [addDigit, removeDigit]);
+
+  const keypadDisabled = isLocked || loading;
 
   return (
-    <div
-      className="relative min-h-screen flex items-center justify-center bg-primary overflow-hidden"
-      style={{ backgroundColor: '#003837' }}
-    >
-      {/* Naqsh background */}
-      <img
-        src="/brand/naqsh-about.svg"
-        alt=""
-        aria-hidden="true"
-        className="absolute inset-0 m-auto w-full max-w-2xl pointer-events-none select-none"
-        style={{ opacity: 0.17, zIndex: 0 }}
-      />
+    <div className="flex h-screen w-screen overflow-hidden" style={{ background: '#fffff6' }}>
 
-      {/* Login card */}
+      {/* Left panel — full image (70%) */}
       <div
-        className="relative z-10 flex flex-col items-center gap-8 px-8 py-10 rounded-xl w-full max-w-[420px] mx-4"
-        style={{
-          background: 'rgba(255,255,246,0.04)',
-          border: '1px solid rgba(255,255,246,0.10)',
-          boxShadow: '0 20px 60px -10px rgba(0,0,0,0.4)',
-        }}
+        className="hidden md:flex items-center justify-center"
+        style={{ width: '70%', flexShrink: 0, background: '#fffff6' }}
       >
-        {/* Logo */}
-        <img src="/brand/logo-white.svg" alt="Chizlab" width={120} />
+        <img
+          src="/brand/chizlab-pen.png"
+          alt=""
+          aria-hidden="true"
+          style={{ width: '75%', height: '75%', objectFit: 'contain', objectPosition: 'center', display: 'block' }}
+        />
+      </div>
 
-        {/* Heading */}
-        <h1
-          className="text-2xl font-bold text-center"
-          style={{ color: '#fffff6', fontFamily: "'PPEditorialNew', Georgia, serif" }}
-        >
-          Tizimga kirish
-        </h1>
+      {/* Right panel — login form (30% desktop, 100% mobile) */}
+      <div
+        className="flex-1 flex flex-col items-center justify-center"
+        style={{ background: '#fffff6', padding: '40px 32px' }}
+      >
+        <div style={{
+          width: '100%', maxWidth: 280,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', gap: 28,
+        }}>
 
-        <form onSubmit={(e) => { void handleSubmit(e); }} className="flex flex-col items-center gap-6 w-full">
-          {/* PIN boxes */}
-          <div className="flex gap-2" role="group" aria-label="8 xonali PIN kodi">
-            {digits.map((digit, idx) => (
-              <input
-                key={idx}
-                ref={(el) => { inputRefs.current[idx] = el; }}
-                type="password"
-                inputMode="numeric"
-                maxLength={1}
-                value={digit}
-                autoFocus={idx === 0}
-                disabled={isLocked || loading}
-                aria-label={`${idx + 1}-raqam`}
-                onChange={(e) => handleDigitChange(idx, e.target.value)}
-                onKeyDown={(e) => handleKeyDown(idx, e)}
-                onPaste={idx === 0 ? handlePaste : undefined}
-                className="w-11 h-14 text-center text-2xl font-bold rounded-md transition-all duration-[150ms] focus:outline-none disabled:opacity-50"
+          {/* Logo */}
+          <img src="/brand/logo.svg" alt="Chizlab" style={{ width: 180, height: 'auto', display: 'block' }} />
+
+          {/* PIN dots — key forces animation replay on each shake */}
+          <div
+            key={shakeKey}
+            className={shakeKey > 0 ? 'pin-shake' : ''}
+            role="group"
+            aria-label="PIN kodi"
+            aria-live="polite"
+            style={{ display: 'flex', gap: 10, alignItems: 'center' }}
+          >
+            {digits.map((d, i) => (
+              <div
+                key={i}
+                aria-hidden="true"
                 style={{
-                  background: 'rgba(255,255,246,0.10)',
-                  border: `1px solid rgba(255,255,246,0.20)`,
-                  color: '#fffff6',
-                  fontFamily: "'SFProDisplay', system-ui, sans-serif",
-                  letterSpacing: '0.1em',
+                  width: 13, height: 13, borderRadius: '50%',
+                  border: `2px solid ${d ? '#003837' : error ? '#9b2c2c' : 'rgba(19,19,19,0.22)'}`,
+                  background: d ? '#003837' : 'transparent',
+                  transition: 'background 0.12s ease, border-color 0.15s ease',
+                  flexShrink: 0,
                 }}
-                onFocus={(e) =>
-                  (e.currentTarget.style.border = '2px solid #b8926a')
-                }
-                onBlur={(e) =>
-                  (e.currentTarget.style.border = '1px solid rgba(255,255,246,0.20)')
-                }
               />
             ))}
           </div>
 
-          {/* Submit button */}
-          <button
-            type="submit"
-            disabled={!pinComplete || isLocked || loading}
-            className="w-full py-[11px] rounded-md text-base font-medium text-white transition-colors duration-[150ms]"
-            style={{
-              background: '#b8926a',
-              opacity: !pinComplete || isLocked || loading ? 0.5 : 1,
-              pointerEvents: !pinComplete || isLocked || loading ? 'none' : 'auto',
-            }}
-            onMouseEnter={(e) => { if (pinComplete && !isLocked) (e.currentTarget.style.background = '#9a7555'); }}
-            onMouseLeave={(e) => { (e.currentTarget.style.background = '#b8926a'); }}
-          >
-            {loading ? 'Kirilmoqda...' : 'Kirish'}
-          </button>
-
-          {/* Error */}
-          {error && (
-            <p className="text-sm text-center" style={{ color: 'rgba(255,100,100,0.9)' }} role="alert">
-              {error}
+          {/* Loading text */}
+          {loading && (
+            <p style={{
+              margin: '-12px 0', fontSize: 12,
+              color: 'rgba(19,19,19,0.45)', fontFamily: "'Inter', sans-serif",
+              letterSpacing: '0.02em',
+            }}>
+              Tekshirilmoqda...
             </p>
           )}
-        </form>
+
+          {/* Error message — stays until next submit */}
+          {error && !loading && (
+            <div
+              role="alert"
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                padding: '10px 14px', borderRadius: 8,
+                background: errorType === 'lockout' ? '#fef3e2' : '#fff5f5',
+                border: `1px solid ${errorType === 'lockout' ? 'rgba(146,85,10,0.2)' : 'rgba(155,44,44,0.18)'}`,
+                color: errorType === 'lockout' ? '#92550a' : '#9b2c2c',
+                fontSize: 13, fontFamily: "'Inter', sans-serif",
+                width: '100%', boxSizing: 'border-box' as const, lineHeight: 1.45,
+              }}
+            >
+              {errorType === 'lockout' ? <LockIcon /> : <WarningIcon />}
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Numeric keypad */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 10, width: '100%',
+          }}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
+              <KeypadButton
+                key={n}
+                onClick={() => addDigit(String(n))}
+                disabled={keypadDisabled || filledCount === PIN_LENGTH}
+                label={String(n)}
+              >
+                {n}
+              </KeypadButton>
+            ))}
+            <div style={{ height: 60 }} />
+            <KeypadButton
+              onClick={() => addDigit('0')}
+              disabled={keypadDisabled || filledCount === PIN_LENGTH}
+              label="0"
+            >
+              0
+            </KeypadButton>
+            <KeypadButton
+              onClick={removeDigit}
+              disabled={keypadDisabled || filledCount === 0}
+              label="O'chirish"
+            >
+              <BackspaceIcon />
+            </KeypadButton>
+          </div>
+
+        </div>
       </div>
     </div>
   );

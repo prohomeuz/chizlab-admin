@@ -10,9 +10,9 @@ export const apiClient: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach JWT from localStorage on every request
+// Attach JWT from sessionStorage on every request
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = localStorage.getItem('accessToken');
+  const token = sessionStorage.getItem('accessToken');
   if (token && config.headers) {
     config.headers['Authorization'] = `Bearer ${token}`;
   }
@@ -40,6 +40,12 @@ apiClient.interceptors.response.use(
     if (!originalRequest) return Promise.reject(error);
 
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Never try to refresh on auth endpoints — propagate directly to caller
+      const reqUrl = originalRequest.url ?? '';
+      if (reqUrl.includes('/auth/login') || reqUrl.includes('/auth/refresh')) {
+        return Promise.reject(error);
+      }
+
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -54,9 +60,9 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = localStorage.getItem('refreshToken');
+      const refreshToken = sessionStorage.getItem('refreshToken');
       if (!refreshToken) {
-        localStorage.removeItem('accessToken');
+        sessionStorage.removeItem('accessToken');
         window.location.href = '/login';
         return Promise.reject(error);
       }
@@ -66,7 +72,7 @@ apiClient.interceptors.response.use(
           `${API_BASE}/api/admin/auth/refresh`,
           { refreshToken },
         );
-        localStorage.setItem('accessToken', data.accessToken);
+        sessionStorage.setItem('accessToken', data.accessToken);
         processQueue(null, data.accessToken);
         if (originalRequest.headers) {
           originalRequest.headers['Authorization'] = `Bearer ${data.accessToken}`;
@@ -74,8 +80,8 @@ apiClient.interceptors.response.use(
         return apiClient(originalRequest);
       } catch (refreshErr: unknown) {
         processQueue(refreshErr, null);
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
+        sessionStorage.removeItem('accessToken');
+        sessionStorage.removeItem('refreshToken');
         window.location.href = '/login';
         return Promise.reject(refreshErr);
       } finally {

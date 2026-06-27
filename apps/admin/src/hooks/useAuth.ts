@@ -11,7 +11,7 @@ export interface AuthState {
 }
 
 function getStoredToken(): string | null {
-  return localStorage.getItem('accessToken');
+  return sessionStorage.getItem('accessToken');
 }
 
 export function useAuthState() {
@@ -19,8 +19,8 @@ export function useAuthState() {
 
   const handleLogin = useCallback(async (pin: string): Promise<LoginResponse> => {
     const res = await apiLogin(pin);
-    localStorage.setItem('accessToken', res.accessToken);
-    localStorage.setItem('refreshToken', res.refreshToken);
+    sessionStorage.setItem('accessToken', res.accessToken);
+    sessionStorage.setItem('refreshToken', res.refreshToken);
     setAccessToken(res.accessToken);
     return res;
   }, []);

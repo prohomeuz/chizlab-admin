@@ -11,6 +11,11 @@
    ========================================================= */
 
 @layer base {
+  input[type='search']::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
   html {
     font-family: var(--font-inter);
     background-color: var(--color-bg);
@@ -93,6 +98,22 @@
 
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+/* =========================================================
+   PIN SHAKE — error feedback on wrong PIN
+   ========================================================= */
+@keyframes pin-shake {
+  0%, 100% { transform: translateX(0); }
+  12%  { transform: translateX(-7px); }
+  28%  { transform: translateX(6px); }
+  44%  { transform: translateX(-4px); }
+  62%  { transform: translateX(3px); }
+  80%  { transform: translateX(-1px); }
+}
+
+.pin-shake {
+  animation: pin-shake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97);
 }
 
 /* =========================================================

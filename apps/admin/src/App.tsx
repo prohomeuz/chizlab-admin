@@ -8,7 +8,6 @@ import { CustomCursor } from './components/CustomCursor';
 import { LoginPage } from './pages/LoginPage';
 import { MaterialsListPage } from './pages/MaterialsListPage';
 import { MaterialFormPage } from './pages/MaterialFormPage';
-import { CategoriesPage } from './pages/CategoriesPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,14 +55,6 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MaterialFormPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/categories"
-        element={
-          <ProtectedRoute>
-            <CategoriesPage />
           </ProtectedRoute>
         }
       />

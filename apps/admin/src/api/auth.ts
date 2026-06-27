@@ -23,7 +23,7 @@ export async function logout(): Promise<void> {
   } catch {
     // ignore errors on logout
   } finally {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
+    sessionStorage.removeItem('accessToken');
+    sessionStorage.removeItem('refreshToken');
   }
 }

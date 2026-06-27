@@ -21,10 +21,18 @@ export function CustomCursor() {
     const onDown = () => setIsClick(true);
     const onUp   = () => setIsClick(false);
 
+    const hide = () => {
+      if (cursorRef.current) cursorRef.current.style.opacity = '0';
+      setIsClick(false);
+    };
+    const show = () => {
+      if (cursorRef.current) cursorRef.current.style.opacity = '1';
+    };
+
     const loop = () => {
       if (cursorRef.current) {
         cursorRef.current.style.transform =
-          `translate(${posRef.current.x}px, ${posRef.current.y}px)`;
+          `translate(${posRef.current.x - 19.5}px, ${posRef.current.y - 19.5}px)`;
       }
       rafRef.current = requestAnimationFrame(loop);
     };
@@ -32,12 +40,18 @@ export function CustomCursor() {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mousedown', onDown);
     window.addEventListener('mouseup',   onUp);
+    window.addEventListener('blur',      hide);
+    document.addEventListener('mouseleave', hide);
+    document.addEventListener('mouseenter', show);
     rafRef.current = requestAnimationFrame(loop);
 
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mousedown', onDown);
       window.removeEventListener('mouseup',   onUp);
+      window.removeEventListener('blur',      hide);
+      document.removeEventListener('mouseleave', hide);
+      document.removeEventListener('mouseenter', show);
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, []);
@@ -52,9 +66,7 @@ export function CustomCursor() {
       <img
         src={isClick ? '/brand/click.svg' : '/brand/cursor.svg'}
         alt=""
-        width={32}
-        height={32}
-        style={{ display: 'block', userSelect: 'none' }}
+        style={{ display: 'block', userSelect: 'none', width: 65, height: 64 }}
       />
     </div>
   );
