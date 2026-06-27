@@ -29,6 +29,7 @@ export interface AppConfig {
   // Security
   publicApiKey: string;
   internalCallbackSecret: string;
+  corsOrigins: string[];
 }
 
 export default registerAs('app', (): AppConfig => ({
@@ -60,4 +61,8 @@ export default registerAs('app', (): AppConfig => ({
 
   publicApiKey: process.env['PUBLIC_API_KEY'] ?? '',
   internalCallbackSecret: process.env['INTERNAL_CALLBACK_SECRET'] ?? '',
+  corsOrigins: (process.env['CORS_ORIGINS'] ?? '')
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean),
 }));

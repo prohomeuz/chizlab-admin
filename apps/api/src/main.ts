@@ -43,8 +43,16 @@ async function bootstrap(): Promise<void> {
   // Global exception filter
   app.useGlobalFilters(new HttpExceptionFilter());
 
-  // CORS — allow all origins in dev; tighten in production
-  app.enableCors();
+  // CORS — restricted to configured origins; empty = deny all cross-origin
+  const cs = app.get(ConfigService);
+  const cfg = cs.get<AppConfig>('app')!;
+  const allowedOrigins = cfg.corsOrigins;
+  app.enableCors({
+    origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+    credentials: true,
+  });
 
   // ── Swagger: Admin docs ─────────────────────────────────────────────────
   const adminDocConfig = new DocumentBuilder()
@@ -91,9 +99,6 @@ async function bootstrap(): Promise<void> {
 
   // ── Listen ────────────────────────────────────────────────────────────────
   // Admin PIN seeding is handled by AuthService.onApplicationBootstrap()
-  const cs = app.get(ConfigService);
-  const cfg = cs.get<AppConfig>('app')!;
-
   await app.listen(cfg.port);
   logger.log(`API listening on port ${cfg.port}`);
 }

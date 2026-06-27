@@ -32,8 +32,10 @@ RUN printf 'server {\n\
   root /usr/share/nginx/html;\n\
   index index.html;\n\
 \n\
-  # Proxy API and Swagger docs to the NestJS backend\n\
-  location ~ ^/(api|docs|internal|health) {\n\
+  # Proxy API, Swagger docs, and health to the NestJS backend.\n\
+  # NOTE: /internal is intentionally excluded — it must only be reachable\n\
+  # from within the Docker network (ai-worker -> api directly).\n\
+  location ~ ^/(api|docs|health) {\n\
     proxy_pass http://api:3000;\n\
     proxy_http_version 1.1;\n\
     proxy_set_header Host $host;\n\

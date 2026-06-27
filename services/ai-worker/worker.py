@@ -171,8 +171,6 @@ class WorkerSettings:
         port = int(port_str) if port_str else 6379
         return RedisSettings(host=host, port=port)
 
-    redis_settings = property(lambda self: WorkerSettings.get_redis_settings())
-
     # Queue name must match what NestJS enqueues to.
     # BullMQ uses "{queue}:{job_type}" as queue key — arq uses a simple key.
     # NestJS BullMQ queue name: "ai-analysis"
@@ -180,3 +178,11 @@ class WorkerSettings:
 
     max_jobs = 10
     job_timeout = 300  # 5 minutes per job
+
+
+# arq reads redis_settings as a class attribute at import time — not via an instance.
+# A Python property() descriptor accessed on the class (not an instance) returns
+# the property object itself, not the computed value, causing:
+#   AttributeError: 'property' object has no attribute 'host'
+# Assigning after the class body produces a plain RedisSettings object arq can introspect.
+WorkerSettings.redis_settings = WorkerSettings.get_redis_settings()

@@ -61,4 +61,27 @@ on success: status=active, isReady=true. On failure after 3 retries: status=need
 
 ## How to run
 
-`docker compose up` from repo root (after copying `.env.example` → `.env` and filling values).
+```bash
+cp infra/.env.example infra/.env
+# Edit infra/.env — set GEMINI_API_KEY, CORS_ORIGINS, and change weak defaults
+cd infra && docker compose up -d
+```
+
+Services:
+- Admin panel: http://localhost:80
+- NestJS API: http://localhost:3000
+- Swagger (admin): http://localhost:3000/docs/admin
+- Swagger (public): http://localhost:3000/docs/public
+- MinIO console: http://localhost:9101
+
+## Key env vars added in Phase 5
+
+`CORS_ORIGINS` — comma-separated list of allowed origins (e.g. `https://admin.chizlab.uz`).
+Added to `apps/api/src/config/config.ts` as `corsOrigins: string[]`.
+
+## Outstanding work (non-blocking)
+
+- No pytest tests for `services/ai-worker/`
+- No structured logging (Winston/Pino/Sentry)
+- CI deploy job needs VPS secrets to activate
+- Verify Gemini API key format with Google AI Studio
