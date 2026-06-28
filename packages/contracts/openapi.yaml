@@ -54,16 +54,32 @@ components:
     MaterialStatus:
       type: string
       enum:
-        - draft
-        - active
         - pending
-        - needs_review
+        - draft
+        - ready
       description: |
         Lifecycle status of a material.
-        - `pending`      — newly created; AI analysis in progress.
-        - `active`       — AI analysis complete and isReady=true; visible on public API.
-        - `draft`        — hidden from public; admin is editing.
-        - `needs_review` — AI analysis failed after 3 retries; admin must complete fields.
+        - `pending` — newly created; AI analysis in progress.
+        - `draft`   — hidden from public; admin manually set.
+        - `ready`   — AI analysis complete; visible on public API.
+
+    MaterialType:
+      type: string
+      enum:
+        - textbook_electronic
+        - thesis
+        - article
+        - textbook
+        - monograph
+        - presentation
+      description: |
+        Type/format of the material document.
+        - `textbook_electronic` — Elektron o'quv qo'llanma
+        - `thesis`              — Tezis
+        - `article`             — Maqola
+        - `textbook`            — Darslik
+        - `monograph`           — Monografiya
+        - `presentation`        — Taqdimot
 
     # --- Core entities -------------------------------------------------------
 
@@ -76,6 +92,7 @@ components:
         - categoryId
         - mediaUrl
         - tags
+        - authors
         - status
         - isReady
         - createdAt
@@ -91,6 +108,14 @@ components:
         description:
           type: string
           description: Plain-text description. AI-fillable.
+        blurb:
+          type: string
+          nullable: true
+          description: Short marketing description. AI-fillable.
+        materialType:
+          $ref: '#/components/schemas/MaterialType'
+          nullable: true
+          description: Admin-selected material type.
         categoryId:
           type: string
           format: uuid
@@ -105,7 +130,31 @@ components:
           type: array
           items:
             type: string
-          description: Free-text tags. AI-fillable.
+          description: Free-text tags (5-6 keywords). AI-fillable.
+        authors:
+          type: array
+          items:
+            type: string
+          description: Author names extracted from document. AI-fillable.
+        language:
+          type: string
+          nullable: true
+          description: Language of the material. AI-fillable.
+        publishYear:
+          type: integer
+          nullable: true
+          minimum: 1900
+          maximum: 2100
+          description: Publication year. AI-fillable.
+        country:
+          type: string
+          nullable: true
+          description: Country of publication. AI-fillable.
+        pageCount:
+          type: integer
+          nullable: true
+          minimum: 1
+          description: Page count. AI-fillable.
         status:
           $ref: '#/components/schemas/MaterialStatus'
         isReady:
@@ -1023,10 +1072,10 @@ paths:
     get:
       tags:
         - public-materials
-      summary: List active materials (public)
+      summary: List ready materials (public)
       description: |
         Returns paginated materials visible to the external platform.
-        **Hard-coded filter (not client-controllable):** `status=active AND isReady=true AND deletedAt IS NULL`.
+        **Hard-coded filter (not client-controllable):** `status=ready AND deletedAt IS NULL`.
         Supports pagination, category filter, tag filter, and full-text search.
         Does NOT expose `deletedAt` field in response objects.
       operationId: publicListMaterials
@@ -1040,7 +1089,7 @@ paths:
         - $ref: '#/components/parameters/SearchParam'
       responses:
         '200':
-          description: Paginated list of active, ready materials.
+          description: Paginated list of ready materials.
           content:
             application/json:
               schema:
@@ -1054,9 +1103,9 @@ paths:
     get:
       tags:
         - public-materials
-      summary: Get single active material (public)
+      summary: Get single ready material (public)
       description: |
-        Returns a single material only if `status=active AND isReady=true AND deletedAt IS NULL`.
+        Returns a single material only if `status=ready AND deletedAt IS NULL`.
         Returns 404 for any other state (draft, pending, deleted, etc.).
       operationId: publicGetMaterial
       security:
@@ -1065,7 +1114,7 @@ paths:
         - $ref: '#/components/parameters/MaterialIdPath'
       responses:
         '200':
-          description: Material found and is active + ready.
+          description: Material found and is ready.
           content:
             application/json:
               schema:
@@ -1073,7 +1122,7 @@ paths:
         '401':
           $ref: '#/components/responses/UnauthorizedError'
         '404':
-          description: Material not found, not active, not ready, or soft-deleted.
+          description: Material not found, not ready, or soft-deleted.
           content:
             application/json:
               schema:
@@ -1117,8 +1166,8 @@ paths:
         **INTERNAL ENDPOINT — never publicly routed.**
         Called by the Python AI worker after media analysis completes (success or terminal failure).
 
-        On success: updates material with AI-filled fields, sets `status=active`, `isReady=true`.
-        On failure: sets `status=needs_review`, `isReady=false`.
+        On success: updates material with AI-filled fields, sets `status=ready`, `isReady=true`.
+        On failure: leaves `status=pending`, sets `isReady=false`.
 
         Protected by `X-Internal-Secret` header validated against `INTERNAL_CALLBACK_SECRET` env var.
       operationId: internalAiResult

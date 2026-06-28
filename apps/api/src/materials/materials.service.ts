@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,18 +10,16 @@ import { CreateMaterialDto } from './dto/create-material.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { ListMaterialsDto } from './dto/list-materials.dto';
 import { PaginatedResponseDto } from '../common/pagination.dto';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
-
-export const AI_ANALYSIS_QUEUE = 'ai-analysis';
+import { AiJobService } from './ai-job.service';
 
 @Injectable()
 export class MaterialsService {
+  private readonly logger = new Logger(MaterialsService.name);
+
   constructor(
     @InjectRepository(Material)
     private readonly materialRepo: Repository<Material>,
-    @InjectQueue(AI_ANALYSIS_QUEUE)
-    private readonly aiQueue: Queue,
+    private readonly aiJobService: AiJobService,
   ) {}
 
   async create(dto: CreateMaterialDto): Promise<Material> {
@@ -28,17 +27,18 @@ export class MaterialsService {
       title: dto.title ?? null,
       description: dto.description ?? null,
       categoryId: dto.categoryId ?? null,
+      materialType: dto.materialType ?? null,
       mediaUrl: dto.mediaUrl ?? null,
       tags: dto.tags ?? [],
-      status: dto.status ?? MaterialStatus.PENDING,
+      authors: [],
+      status: MaterialStatus.PENDING,
       isReady: false,
     });
 
     const saved = await this.materialRepo.save(material);
 
-    // Enqueue AI job if mediaUrl is present
     if (saved.mediaUrl) {
-      await this.enqueueAiJob(saved.id, saved.mediaUrl);
+      this.enqueueAiJob(saved.id, saved.mediaUrl);
     }
 
     return saved;
@@ -49,6 +49,7 @@ export class MaterialsService {
       limit = 20,
       offset = 0,
       categoryId,
+      materialType,
       tags,
       status,
       search,
@@ -70,6 +71,10 @@ export class MaterialsService {
 
     if (categoryId) {
       qb.andWhere('m.category_id = :categoryId', { categoryId });
+    }
+
+    if (materialType) {
+      qb.andWhere('m.material_type = :materialType', { materialType });
     }
 
     if (tags) {
@@ -107,16 +112,22 @@ export class MaterialsService {
 
     if (dto.title !== undefined) material.title = dto.title;
     if (dto.description !== undefined) material.description = dto.description;
+    if (dto.blurb !== undefined) material.blurb = dto.blurb;
     if (dto.categoryId !== undefined) material.categoryId = dto.categoryId;
+    if (dto.materialType !== undefined) material.materialType = dto.materialType;
     if (dto.mediaUrl !== undefined) material.mediaUrl = dto.mediaUrl;
     if (dto.tags !== undefined) material.tags = dto.tags;
+    if (dto.authors !== undefined) material.authors = dto.authors;
+    if (dto.language !== undefined) material.language = dto.language;
+    if (dto.publishYear !== undefined) material.publishYear = dto.publishYear;
+    if (dto.country !== undefined) material.country = dto.country;
+    if (dto.pageCount !== undefined) material.pageCount = dto.pageCount;
     if (dto.status !== undefined) material.status = dto.status;
 
     const saved = await this.materialRepo.save(material);
 
-    // If mediaUrl was newly set (or changed), enqueue AI job
     if (dto.mediaUrl && dto.mediaUrl !== hadMediaUrl) {
-      await this.enqueueAiJob(saved.id, dto.mediaUrl);
+      this.enqueueAiJob(saved.id, dto.mediaUrl);
     }
 
     return saved;
@@ -140,8 +151,7 @@ export class MaterialsService {
   ): Promise<PaginatedResponseDto<Material>> {
     const qb = this.materialRepo
       .createQueryBuilder('m')
-      .where('m.status = :status', { status: MaterialStatus.ACTIVE })
-      .andWhere('m.is_ready = true')
+      .where('m.status = :status', { status: MaterialStatus.READY })
       .andWhere('m.deleted_at IS NULL')
       .skip(offset)
       .take(limit)
@@ -170,8 +180,7 @@ export class MaterialsService {
     const material = await this.materialRepo.findOne({
       where: {
         id,
-        status: MaterialStatus.ACTIVE,
-        isReady: true,
+        status: MaterialStatus.READY,
       },
     });
 
@@ -192,7 +201,13 @@ export class MaterialsService {
     fields: {
       title?: string | null;
       description?: string | null;
+      blurb?: string | null;
       tags?: string[] | null;
+      authors?: string[] | null;
+      language?: string | null;
+      publishYear?: number | null;
+      country?: string | null;
+      pageCount?: number | null;
       suggestedCategoryId?: string | null;
       error?: string | null;
     },
@@ -205,15 +220,19 @@ export class MaterialsService {
     if (success) {
       if (fields.title != null) material.title = fields.title;
       if (fields.description != null) material.description = fields.description;
+      if (fields.blurb != null) material.blurb = fields.blurb;
       if (fields.tags != null) material.tags = fields.tags;
+      if (fields.authors != null) material.authors = fields.authors;
+      if (fields.language != null) material.language = fields.language;
+      if (fields.publishYear != null) material.publishYear = fields.publishYear;
+      if (fields.country != null) material.country = fields.country;
+      if (fields.pageCount != null) material.pageCount = fields.pageCount;
       if (fields.suggestedCategoryId != null) {
-        // Validated upstream in InternalService
         material.categoryId = fields.suggestedCategoryId;
       }
       material.isReady = true;
-      material.status = MaterialStatus.ACTIVE;
+      material.status = MaterialStatus.READY;
     } else {
-      material.status = MaterialStatus.NEEDS_REVIEW;
       material.isReady = false;
     }
 
@@ -224,16 +243,9 @@ export class MaterialsService {
   // Helpers
   // ---------------------------------------------------------------------------
 
-  private async enqueueAiJob(materialId: string, mediaUrl: string): Promise<void> {
-    await this.aiQueue.add(
-      'analyze_material',
-      { materialId, mediaUrl },
-      {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
-        removeOnComplete: 100,
-        removeOnFail: 100,
-      },
-    );
+  private enqueueAiJob(materialId: string, mediaUrl: string): void {
+    this.aiJobService.enqueue(materialId, mediaUrl).catch((err: unknown) => {
+      this.logger.error(`Failed to enqueue AI job for material=${materialId}`, err);
+    });
   }
 }

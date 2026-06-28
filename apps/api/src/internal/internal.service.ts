@@ -27,7 +27,13 @@ export class InternalService {
     await this.materialsService.applyAiResult(dto.materialId, dto.success, {
       title: dto.title,
       description: dto.description,
+      blurb: dto.blurb,
       tags: dto.tags,
+      authors: dto.authors,
+      language: dto.language,
+      publishYear: dto.publishYear,
+      country: dto.country,
+      pageCount: dto.pageCount,
       suggestedCategoryId: validatedCategoryId,
       error: dto.error,
     });

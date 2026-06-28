@@ -35,12 +35,16 @@ RUN printf 'server {\n\
   # Proxy API, Swagger docs, and health to the NestJS backend.\n\
   # NOTE: /internal is intentionally excluded — it must only be reachable\n\
   # from within the Docker network (ai-worker -> api directly).\n\
+  # Allow large file uploads (PDF, DOCX, PPTX up to 110 MB)\n\
+  client_max_body_size 110m;\n\
+\n\
   location ~ ^/(api|docs|health) {\n\
     proxy_pass http://api:3000;\n\
     proxy_http_version 1.1;\n\
     proxy_set_header Host $host;\n\
     proxy_set_header X-Real-IP $remote_addr;\n\
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n\
+    proxy_read_timeout 120s;\n\
   }\n\
 \n\
   location ~* \\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {\n\

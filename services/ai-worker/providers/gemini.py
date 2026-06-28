@@ -2,7 +2,7 @@
 Google Gemini AI provider implementation.
 
 Uses gemini-1.5-flash for cost-effective multimodal analysis.
-Supports: images, video, PDF, audio.
+Supports: PDF, DOC, DOCX, PPT, PPTX and other document formats.
 """
 from __future__ import annotations
 
@@ -17,24 +17,34 @@ from .base import AnalysisResult
 
 logger = logging.getLogger(__name__)
 
-# Model chosen for cost efficiency; switch to gemini-1.5-pro for higher quality.
-_MODEL_NAME = "gemini-1.5-flash"
+_MODEL_NAME = "gemini-2.0-flash"
 
 _ANALYSIS_PROMPT = """
-Analyze the provided media file and return a JSON object with the following fields:
+Analyze the provided educational material and return a JSON object with these fields:
 
 {
-  "title": "A concise, descriptive title for this educational material (max 100 chars)",
-  "description": "A plain-text description explaining what this material covers (2-5 sentences)",
-  "tags": ["tag1", "tag2", "tag3"],
-  "suggested_category_name": "Best matching category name (e.g. Mathematics, History, Language)"
+  "title": "Concise, descriptive title (max 100 chars)",
+  "description": "Plain-text summary of what this material covers (2-5 sentences)",
+  "blurb": "Short marketing teaser that motivates a student to read this (1-2 sentences, engaging tone)",
+  "tags": ["keyword1", "keyword2", "keyword3"],
+  "authors": ["Author Name 1", "Author Name 2"],
+  "language": "Language the document is written in (e.g. O'zbek, Rus, Ingliz)",
+  "publish_year": 2023,
+  "country": "Country of publication (e.g. O'zbekiston, Rossiya)",
+  "page_count": 148,
+  "suggested_category_name": "Best matching academic category (e.g. Matematika, Tarix, Informatika)"
 }
 
 Rules:
-- All text must be in Uzbek language.
-- tags: array of 3-8 lowercase relevant keywords.
+- All text fields (title, description, blurb, tags) must be in Uzbek language.
+- tags: 5-8 lowercase Uzbek keywords relevant to the content.
+- authors: extract from the document cover/header; empty array [] if not found.
+- language: detect from the document's content language; use Uzbek name of language.
+- publish_year: integer year (e.g. 2023) or null if not found.
+- country: null if not found.
+- page_count: integer or null if not determinable.
 - suggested_category_name: single category name, or null if unclear.
-- Return ONLY the JSON object — no markdown, no code fences, no explanation.
+- Return ONLY the raw JSON object — no markdown fences, no explanation.
 """
 
 
@@ -56,13 +66,6 @@ class GeminiProvider:
         mime_type: str,
         prompt: str = _ANALYSIS_PROMPT,
     ) -> AnalysisResult:
-        """
-        Upload media bytes to Gemini and run analysis.
-        Returns a structured AnalysisResult parsed from the JSON response.
-        """
-        # Upload the file to the Files API (handles large payloads)
-        # Gemini's Python SDK is synchronous — we call it in a thread-pool
-        # in the worker coroutine via asyncio.to_thread.
         import asyncio
 
         result = await asyncio.to_thread(self._run_sync, media_bytes, mime_type, prompt)
@@ -75,8 +78,6 @@ class GeminiProvider:
         prompt: str,
     ) -> AnalysisResult:
         """Synchronous inner call — run inside asyncio.to_thread."""
-        # For smaller files (< 20 MB) we can inline the bytes as a Part
-        # For larger files we use the Files API — handle both.
         part: dict[str, Any] = {
             "inline_data": {
                 "mime_type": mime_type,
@@ -86,22 +87,20 @@ class GeminiProvider:
 
         response: GenerateContentResponse = self._model.generate_content(
             [part, prompt],
-            generation_config={"temperature": 0.2, "max_output_tokens": 1024},
+            generation_config={"temperature": 0.2, "max_output_tokens": 2048},
         )
 
         raw_text: str = response.text.strip()
-        logger.debug("Gemini raw response: %s", raw_text[:500])
+        logger.debug("Gemini raw response: %s", raw_text[:800])
 
         return self._parse_response(raw_text)
 
     @staticmethod
     def _parse_response(raw_text: str) -> AnalysisResult:
         """Parse the JSON from the model response into AnalysisResult."""
-        # Strip common markdown fences if the model added them anyway
         text = raw_text
         if text.startswith("```"):
             lines = text.split("\n")
-            # Drop first and last line if they are fences
             if lines[0].startswith("```"):
                 lines = lines[1:]
             if lines and lines[-1].strip() == "```":
@@ -111,13 +110,50 @@ class GeminiProvider:
         try:
             data: dict[str, Any] = json.loads(text)
         except json.JSONDecodeError as exc:
-            logger.error("Failed to parse Gemini JSON response: %s | raw: %s", exc, raw_text[:500])
-            # Return empty result — the worker will handle retry/failure
+            logger.error(
+                "Failed to parse Gemini JSON response: %s | raw: %s",
+                exc,
+                raw_text[:500],
+            )
             raise ValueError(f"Invalid JSON from Gemini: {exc}") from exc
+
+        publish_year = data.get("publish_year")
+        if publish_year is not None:
+            try:
+                publish_year = int(publish_year)
+                if not (1900 <= publish_year <= 2100):
+                    publish_year = None
+            except (TypeError, ValueError):
+                publish_year = None
+
+        page_count = data.get("page_count")
+        if page_count is not None:
+            try:
+                page_count = int(page_count)
+                if page_count < 1:
+                    page_count = None
+            except (TypeError, ValueError):
+                page_count = None
+
+        authors = data.get("authors") or []
+        if not isinstance(authors, list):
+            authors = []
+        authors = [str(a) for a in authors if a]
+
+        tags = data.get("tags") or []
+        if not isinstance(tags, list):
+            tags = []
+        tags = [str(t) for t in tags if t]
 
         return AnalysisResult(
             title=data.get("title") or None,
             description=data.get("description") or None,
-            tags=data.get("tags") or [],
+            blurb=data.get("blurb") or None,
+            tags=tags,
+            authors=authors,
+            language=data.get("language") or None,
+            publish_year=publish_year,
+            country=data.get("country") or None,
+            page_count=page_count,
             suggested_category_name=data.get("suggested_category_name") or None,
         )

@@ -14,7 +14,13 @@ class AnalysisResult(BaseModel):
 
     title: str | None = None
     description: str | None = None
+    blurb: str | None = None
     tags: list[str] = []
+    authors: list[str] = []
+    language: str | None = None
+    publish_year: int | None = None
+    country: str | None = None
+    page_count: int | None = None
     suggested_category_name: str | None = None
 
 

@@ -17,7 +17,16 @@
 // ---------------------------------------------------------------------------
 
 /** Lifecycle status of a Material record. */
-export type MaterialStatus = 'draft' | 'active' | 'pending' | 'needs_review';
+export type MaterialStatus = 'pending' | 'draft' | 'ready';
+
+/** Type/format of a Material. */
+export type MaterialType =
+  | 'textbook_electronic'
+  | 'thesis'
+  | 'article'
+  | 'textbook'
+  | 'monograph'
+  | 'presentation';
 
 // ---------------------------------------------------------------------------
 // Core entities
@@ -34,12 +43,26 @@ export interface Material {
   title: string;
   /** Plain-text description. AI-fillable. */
   description: string;
+  /** Short marketing blurb. AI-fillable. */
+  blurb: string | null;
   /** Foreign key to Category.id. Null until a category is assigned. */
   categoryId: string | null;
+  /** Material type selected by admin. */
+  materialType: MaterialType | null;
   /** MinIO URL of the uploaded media file. Null until media is uploaded. */
   mediaUrl: string | null;
-  /** Free-text tags. AI-fillable. */
+  /** Free-text tags (5-6 keywords). AI-fillable. */
   tags: string[];
+  /** Author names extracted by AI. */
+  authors: string[];
+  /** Language of the material. AI-fillable. */
+  language: string | null;
+  /** Publication year. AI-fillable. */
+  publishYear: number | null;
+  /** Country of publication. AI-fillable. */
+  country: string | null;
+  /** Page count. AI-fillable. */
+  pageCount: number | null;
   /** Lifecycle status. */
   status: MaterialStatus;
   /** True only after successful AI analysis. */
@@ -63,8 +86,7 @@ export interface Material {
 
 /**
  * Public-facing Material record (omits `deletedAt`).
- * Only `status=active AND isReady=true AND deletedAt IS NULL` records
- * are ever returned from the public API.
+ * Only `status=ready AND deletedAt IS NULL` records are ever returned from the public API.
  */
 export interface PublicMaterial {
   id: string;
@@ -124,23 +146,17 @@ export interface PaginationEnvelope<T> {
 
 /**
  * Request body for POST /api/admin/materials.
- * All fields optional. Defaults: status=pending, isReady=false.
+ * Status always starts as 'pending' — AI sets it to 'ready'.
+ * User provides: mediaUrl, materialType, categoryId only.
  */
 export interface CreateMaterialDto {
-  /** Max 512 characters. */
-  title?: string;
-  /** Plain text. */
-  description?: string;
-  /** Category UUID. */
-  categoryId?: string | null;
-  /**
-   * URL returned by POST /api/admin/upload.
-   * Set this after uploading the media file.
-   */
   mediaUrl?: string | null;
+  materialType?: MaterialType | null;
+  categoryId?: string | null;
+  /** Optionally pre-fill; AI will overwrite. */
+  title?: string;
+  description?: string;
   tags?: string[];
-  /** Defaults to 'pending' if omitted. */
-  status?: MaterialStatus;
 }
 
 /**
@@ -148,12 +164,18 @@ export interface CreateMaterialDto {
  * All fields optional — only provided fields are updated (partial update).
  */
 export interface UpdateMaterialDto {
-  /** Max 512 characters. */
   title?: string;
   description?: string;
+  blurb?: string | null;
   categoryId?: string | null;
+  materialType?: MaterialType | null;
   mediaUrl?: string | null;
   tags?: string[];
+  authors?: string[];
+  language?: string | null;
+  publishYear?: number | null;
+  country?: string | null;
+  pageCount?: number | null;
   status?: MaterialStatus;
 }
 
@@ -236,16 +258,28 @@ export interface AiResultCallback {
   materialId: string;
   /**
    * True if analysis succeeded.
-   * On success: backend sets status=active, isReady=true and applies AI-filled fields.
-   * On false: backend sets status=needs_review, isReady=false.
+   * On success: backend sets status=ready, isReady=true and applies AI-filled fields.
+   * On false: backend leaves status=pending, sets isReady=false.
    */
   success: boolean;
   /** AI-generated title. Present when success=true. */
   title?: string | null;
   /** AI-generated plain-text description. Present when success=true. */
   description?: string | null;
-  /** AI-generated tags. Present when success=true. */
+  /** AI-generated short marketing blurb. Present when success=true. */
+  blurb?: string | null;
+  /** AI-generated tags (5-6 keywords). Present when success=true. */
   tags?: string[] | null;
+  /** AI-extracted author names. Present when success=true. */
+  authors?: string[] | null;
+  /** AI-detected language. Present when success=true. */
+  language?: string | null;
+  /** AI-detected publication year. Present when success=true. */
+  publishYear?: number | null;
+  /** AI-detected country. Present when success=true. */
+  country?: string | null;
+  /** AI-detected page count. Present when success=true. */
+  pageCount?: number | null;
   /**
    * Category UUID suggested by AI.
    * Backend validates the UUID exists before applying it.
@@ -278,6 +312,7 @@ export interface AdminMaterialsQuery {
   limit?: number;
   offset?: number;
   categoryId?: string;
+  materialType?: MaterialType;
   /** Comma-separated tags. */
   tags?: string;
   status?: MaterialStatus;

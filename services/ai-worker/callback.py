@@ -18,21 +18,32 @@ async def post_success(
     material_id: str,
     title: str | None,
     description: str | None,
+    blurb: str | None,
     tags: list[str],
+    authors: list[str],
+    language: str | None,
+    publish_year: int | None,
+    country: str | None,
+    page_count: int | None,
     suggested_category_id: str | None,
 ) -> None:
     """
     Notify the NestJS API that AI analysis succeeded.
 
-    On success, NestJS sets status=active, isReady=true and stores AI fields.
+    On success, NestJS sets status=ready, isReady=true and stores AI fields.
     """
-    settings = get_settings()
     payload: dict[str, Any] = {
         "materialId": material_id,
         "success": True,
         "title": title,
         "description": description,
+        "blurb": blurb,
         "tags": tags,
+        "authors": authors,
+        "language": language,
+        "publishYear": publish_year,
+        "country": country,
+        "pageCount": page_count,
         "suggestedCategoryId": suggested_category_id,
     }
     await _send(payload)

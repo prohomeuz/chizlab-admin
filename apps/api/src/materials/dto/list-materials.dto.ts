@@ -10,7 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { MaterialStatus } from '../material.entity';
+import { MaterialStatus, MaterialType } from '../material.entity';
 
 export class ListMaterialsDto {
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 20 })
@@ -32,6 +32,11 @@ export class ListMaterialsDto {
   @IsOptional()
   @IsUUID()
   categoryId?: string;
+
+  @ApiPropertyOptional({ enum: MaterialType })
+  @IsOptional()
+  @IsEnum(MaterialType)
+  materialType?: MaterialType;
 
   @ApiPropertyOptional({ description: 'Comma-separated tags', example: 'uzbek,history' })
   @IsOptional()

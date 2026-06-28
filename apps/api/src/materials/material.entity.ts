@@ -11,10 +11,18 @@ import {
 import { Category } from '../categories/category.entity';
 
 export enum MaterialStatus {
-  DRAFT = 'draft',
-  ACTIVE = 'active',
   PENDING = 'pending',
-  NEEDS_REVIEW = 'needs_review',
+  DRAFT = 'draft',
+  READY = 'ready',
+}
+
+export enum MaterialType {
+  TEXTBOOK_ELECTRONIC = 'textbook_electronic',
+  THESIS = 'thesis',
+  ARTICLE = 'article',
+  TEXTBOOK = 'textbook',
+  MONOGRAPH = 'monograph',
+  PRESENTATION = 'presentation',
 }
 
 @Entity('materials')
@@ -36,6 +44,33 @@ export class Material {
 
   @Column({ type: 'text', array: true, default: [] })
   tags!: string[];
+
+  @Column({
+    type: 'enum',
+    enum: MaterialType,
+    enumName: 'material_type_enum',
+    nullable: true,
+    name: 'material_type',
+  })
+  materialType!: MaterialType | null;
+
+  @Column({ type: 'text', nullable: true })
+  language!: string | null;
+
+  @Column({ type: 'integer', nullable: true, name: 'publish_year' })
+  publishYear!: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  country!: string | null;
+
+  @Column({ type: 'integer', nullable: true, name: 'page_count' })
+  pageCount!: number | null;
+
+  @Column({ type: 'text', array: true, default: [], name: 'authors' })
+  authors!: string[];
+
+  @Column({ type: 'text', nullable: true })
+  blurb!: string | null;
 
   @Column({
     type: 'enum',

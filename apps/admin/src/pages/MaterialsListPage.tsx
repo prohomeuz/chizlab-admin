@@ -9,16 +9,34 @@ import { StatusBadge } from '../components/StatusBadge';
 import { Spinner } from '../components/Spinner';
 import { ConfirmModal } from '../components/Modal';
 import { useToastContext } from '../context/ToastContext';
-import type { Material, MaterialStatus, AdminMaterialsQuery } from '@contracts/index';
+import type { Material, MaterialStatus, MaterialType, AdminMaterialsQuery } from '@contracts/index';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 const STATUS_OPTIONS: { value: MaterialStatus | ''; label: string }[] = [
   { value: '', label: 'Barcha statuslar' },
-  { value: 'active', label: 'Faol' },
   { value: 'pending', label: 'Kutilmoqda' },
   { value: 'draft', label: 'Qoralama' },
-  { value: 'needs_review', label: "Ko'rib chiqish kerak" },
+  { value: 'ready', label: 'Tayyor' },
 ];
+
+const MATERIAL_TYPE_OPTIONS: { value: MaterialType | ''; label: string }[] = [
+  { value: '', label: 'Barcha turlar' },
+  { value: 'textbook_electronic', label: "Elektron o'quv qo'llanma" },
+  { value: 'thesis', label: 'Tezis' },
+  { value: 'article', label: 'Maqola' },
+  { value: 'textbook', label: 'Darslik' },
+  { value: 'monograph', label: 'Monografiya' },
+  { value: 'presentation', label: 'Taqdimot' },
+];
+
+const MATERIAL_TYPE_LABELS: Record<MaterialType, string> = {
+  textbook_electronic: "Elektron o'quv q.",
+  thesis: 'Tezis',
+  article: 'Maqola',
+  textbook: 'Darslik',
+  monograph: 'Monografiya',
+  presentation: 'Taqdimot',
+};
 
 function useDebouncedValue<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -36,17 +54,19 @@ export function MaterialsListPage() {
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [status, setStatus] = useState<MaterialStatus | ''>('');
+  const [materialType, setMaterialType] = useState<MaterialType | ''>('');
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(10);
   const [deleteTarget, setDeleteTarget] = useState<Material | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
-  const hasActiveFilters = Boolean(categoryId || status);
+  const hasActiveFilters = Boolean(categoryId || status || materialType);
 
   const query: AdminMaterialsQuery = {
     offset,
     limit,
     ...(debouncedSearch ? { search: debouncedSearch } : {}),
     ...(categoryId ? { categoryId } : {}),
+    ...(materialType ? { materialType } : {}),
     ...(status ? { status } : {}),
   };
 
@@ -130,11 +150,27 @@ export function MaterialsListPage() {
               </svg>
             </div>
 
+            <div className="relative">
+              <select
+                value={materialType}
+                onChange={(e) => { setMaterialType(e.target.value as MaterialType | ''); setOffset(0); }}
+                className="appearance-none pl-3 pr-9 py-[10px] text-sm bg-bg-elevated border border-border rounded-md text-text-primary focus:outline-none focus:border-focus transition-all"
+                aria-label="Material turi bo'yicha filtrlash"
+              >
+                {MATERIAL_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <svg className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted pointer-events-none" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </div>
+
             {hasActiveFilters && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setCategoryId(''); setStatus(''); setOffset(0); }}
+                onClick={() => { setCategoryId(''); setStatus(''); setMaterialType(''); setOffset(0); }}
               >
                 Tozalash
               </Button>
@@ -197,8 +233,8 @@ export function MaterialsListPage() {
                   <thead>
                     <tr className="border-b border-border bg-bg-sunken sticky top-0">
                       <th className="px-4 py-3 text-left font-medium text-text-secondary uppercase tracking-wider text-xs">Sarlavha</th>
-                      <th className="px-4 py-3 text-left font-medium text-text-secondary uppercase tracking-wider text-xs w-40">Kategoriya</th>
-                      <th className="px-4 py-3 text-left font-medium text-text-secondary uppercase tracking-wider text-xs w-44">Teglar</th>
+                      <th className="px-4 py-3 text-left font-medium text-text-secondary uppercase tracking-wider text-xs w-36">Tur</th>
+                      <th className="px-4 py-3 text-left font-medium text-text-secondary uppercase tracking-wider text-xs w-36">Kategoriya</th>
                       <th className="px-4 py-3 text-left font-medium text-text-secondary uppercase tracking-wider text-xs w-36">Status</th>
                       <th className="px-4 py-3 text-center font-medium text-text-secondary uppercase tracking-wider text-xs w-16">Tayyor</th>
                       <th className="px-4 py-3 text-right font-medium text-text-secondary uppercase tracking-wider text-xs w-20">Harakat</th>
@@ -235,20 +271,13 @@ export function MaterialsListPage() {
                             {mat.title || <span className="text-text-muted italic">Sarlavsiz</span>}
                           </span>
                         </td>
+                        <td className="px-4 py-3 text-text-secondary text-xs">
+                          {mat.materialType
+                            ? MATERIAL_TYPE_LABELS[mat.materialType as MaterialType]
+                            : <span className="text-text-muted">—</span>}
+                        </td>
                         <td className="px-4 py-3 text-text-secondary">
                           {mat.categoryId ? categoryMap.get(mat.categoryId) ?? '—' : '—'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {(mat.tags ?? []).slice(0, 3).map((tag) => (
-                              <span key={tag} className="inline-flex text-xs bg-primary-muted text-primary rounded-sm px-2 py-0.5">
-                                {tag}
-                              </span>
-                            ))}
-                            {(mat.tags ?? []).length > 3 && (
-                              <span className="text-xs text-text-muted">+{mat.tags.length - 3}</span>
-                            )}
-                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <StatusBadge status={mat.status} />

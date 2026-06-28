@@ -8,9 +8,25 @@ import {
   IsUrl,
   MaxLength,
 } from 'class-validator';
-import { MaterialStatus } from '../material.entity';
+// IsUrl kept for structured validation; require_tld:false allows internal MinIO hostnames
+import { MaterialType } from '../material.entity';
 
 export class CreateMaterialDto {
+  @ApiPropertyOptional({ format: 'uri', nullable: true })
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  mediaUrl?: string | null;
+
+  @ApiPropertyOptional({ enum: MaterialType, nullable: true })
+  @IsOptional()
+  @IsEnum(MaterialType)
+  materialType?: MaterialType | null;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string | null;
+
   @ApiPropertyOptional({ maxLength: 512 })
   @IsOptional()
   @IsString()
@@ -22,24 +38,9 @@ export class CreateMaterialDto {
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ format: 'uuid', nullable: true })
-  @IsOptional()
-  @IsUUID()
-  categoryId?: string | null;
-
-  @ApiPropertyOptional({ format: 'uri', nullable: true })
-  @IsOptional()
-  @IsUrl()
-  mediaUrl?: string | null;
-
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
-
-  @ApiPropertyOptional({ enum: MaterialStatus })
-  @IsOptional()
-  @IsEnum(MaterialStatus)
-  status?: MaterialStatus;
 }

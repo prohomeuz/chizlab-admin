@@ -8,11 +8,6 @@ const statusConfig: Record<
   MaterialStatus,
   { label: string; textColor: string; bgColor: string }
 > = {
-  active: {
-    label: 'Faol',
-    textColor: '#006b3c',
-    bgColor: '#e6f4ed',
-  },
   pending: {
     label: 'Kutilmoqda',
     textColor: '#92550a',
@@ -23,15 +18,15 @@ const statusConfig: Record<
     textColor: '#4a5568',
     bgColor: '#edf2f7',
   },
-  needs_review: {
-    label: "Ko'rib chiqish kerak",
-    textColor: '#9b2c2c',
-    bgColor: '#fff5f5',
+  ready: {
+    label: 'Tayyor',
+    textColor: '#006b3c',
+    bgColor: '#e6f4ed',
   },
 };
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  const cfg = statusConfig[status];
+  const cfg = statusConfig[status] ?? { label: status, textColor: '#4a5568', bgColor: '#edf2f7' };
   return (
     <span
       role="status"
