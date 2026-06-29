@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { getMaterials, deleteMaterial, getMaterialProgress } from '../api/materials';
 import { getCategories } from '../api/categories';
 import { Layout } from '../components/Layout';
@@ -103,6 +103,8 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 export function MaterialsListPage() {
   const queryClient = useQueryClient();
   const { addToast } = useToastContext();
+  const navigate = useNavigate();
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [search, setSearch] = useState('');
   const [categoryId, setCategoryId] = useState('');
@@ -111,7 +113,7 @@ export function MaterialsListPage() {
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(10);
   const [deleteTarget, setDeleteTarget] = useState<Material | null>(null);
-  const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedSearch = useDebouncedValue(search, 150);
   const hasActiveFilters = Boolean(categoryId || status || materialType);
 
   const query: AdminMaterialsQuery = {
@@ -126,6 +128,7 @@ export function MaterialsListPage() {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['materials', query],
     queryFn: () => getMaterials(query),
+    placeholderData: keepPreviousData,
     refetchInterval: (q) => {
       const items = q.state.data?.items ?? [];
       return items.some((m) => m.status === 'pending') ? 5000 : false;
@@ -154,6 +157,20 @@ export function MaterialsListPage() {
   const currentPage = Math.floor(offset / limit) + 1;
 
   const categoryMap = new Map((categories ?? []).map((c) => [c.id, c.name]));
+
+  function handleRowClick(e: React.MouseEvent, mat: Material) {
+    if (e.detail === 2) {
+      clickTimerRef.current = setTimeout(() => {
+        navigate(`/materials/${mat.id}/edit`);
+      }, 220);
+    } else if (e.detail === 3) {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+      setDeleteTarget(mat);
+    }
+  }
 
   return (
     <Layout
@@ -225,25 +242,34 @@ export function MaterialsListPage() {
                 size="sm"
                 onClick={() => { setCategoryId(''); setStatus(''); setMaterialType(''); setOffset(0); }}
               >
-                Tozalash
+                <span className="flex items-center gap-1.5">
+                  <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                  </svg>
+                  Tozalash
+                </span>
               </Button>
             )}
           </div>
 
           {/* Right: search */}
           <div className="relative w-80">
-            <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted pointer-events-none"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                fillRule="evenodd"
-                d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
-                clipRule="evenodd"
-              />
-            </svg>
+            {(search !== debouncedSearch || (isFetching && search)) ? (
+              <Spinner size="sm" className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            ) : (
+              <svg
+                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted pointer-events-none"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            )}
             <input
               type="search"
               value={search}
@@ -273,12 +299,7 @@ export function MaterialsListPage() {
           </div>
         ) : (
           <div className="flex flex-col flex-1 min-h-0">
-            <div className="relative flex-1 min-h-0 bg-bg-elevated rounded-lg shadow-card overflow-auto border border-border">
-              {isFetching && !isLoading && (
-                <div className="absolute top-0 left-0 right-0 h-0.5 bg-accent-muted z-10 rounded-t-lg overflow-hidden">
-                  <div className="h-full bg-accent animate-pulse w-1/3" />
-                </div>
-              )}
+            <div className={`relative flex-1 min-h-0 bg-bg-elevated rounded-lg shadow-card overflow-auto border border-border transition-opacity duration-150 ${isFetching && !isLoading ? 'opacity-60' : 'opacity-100'}`}>
 
               {/* Desktop table */}
               <div className="hidden md:block">
@@ -289,14 +310,12 @@ export function MaterialsListPage() {
                       <th className="px-4 py-3 text-left font-medium text-text-secondary uppercase tracking-wider text-xs w-36">Tur</th>
                       <th className="px-4 py-3 text-left font-medium text-text-secondary uppercase tracking-wider text-xs w-36">Kategoriya</th>
                       <th className="px-4 py-3 text-left font-medium text-text-secondary uppercase tracking-wider text-xs w-36">Status</th>
-                      <th className="px-4 py-3 text-center font-medium text-text-secondary uppercase tracking-wider text-xs w-16">Tayyor</th>
-                      <th className="px-4 py-3 text-right font-medium text-text-secondary uppercase tracking-wider text-xs w-20">Harakat</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data?.items.length === 0 && (
                       <tr>
-                        <td colSpan={6}>
+                        <td colSpan={4}>
                           <div className="flex flex-col items-center justify-center" style={{ height: 'calc(100vh - 220px)' }}>
                             <img
                               src="/brand/naqsh.svg"
@@ -313,10 +332,11 @@ export function MaterialsListPage() {
                         </td>
                       </tr>
                     )}
-                    {data?.items.map((mat, idx) => (
+                    {data?.items.map((mat) => (
                       <tr
                         key={mat.id}
-                        className={`border-b border-border last:border-0 hover:bg-surfaceHover transition-colors ${idx % 2 === 1 ? 'bg-bg-sunken' : 'bg-bg-elevated'}`}
+                        onClick={(e) => handleRowClick(e, mat)}
+                        className="border-b border-border last:border-0 hover:bg-surfaceHover transition-colors cursor-pointer select-none bg-bg-elevated"
                         style={{ height: '56px' }}
                       >
                         <td className="px-4 py-3">
@@ -335,39 +355,6 @@ export function MaterialsListPage() {
                         <td className="px-4 py-3">
                           <ProgressBadge material={mat} />
                         </td>
-                        <td className="px-4 py-3 text-center">
-                          {mat.isReady ? (
-                            <svg className="h-5 w-5 text-[#006b3c] mx-auto" viewBox="0 0 20 20" fill="currentColor" aria-label="Tayyor">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                            </svg>
-                          ) : (
-                            <svg className="h-5 w-5 text-text-muted mx-auto" viewBox="0 0 20 20" fill="currentColor" aria-label="Tayyor emas">
-                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                            </svg>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
-                            <Link
-                              to={`/materials/${mat.id}/edit`}
-                              aria-label={`${mat.title} ni tahrirlash`}
-                              className="p-1.5 rounded-md text-text-muted hover:text-primary hover:bg-primary-muted transition-colors"
-                            >
-                              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
-                              </svg>
-                            </Link>
-                            <button
-                              onClick={() => setDeleteTarget(mat)}
-                              aria-label={`${mat.title} ni o'chirish`}
-                              className="p-1.5 rounded-md text-text-muted hover:text-[#9b2c2c] hover:bg-[#fff5f5] transition-colors"
-                            >
-                              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -382,7 +369,11 @@ export function MaterialsListPage() {
                   </div>
                 )}
                 {data?.items.map((mat) => (
-                  <div key={mat.id} className="p-4">
+                  <div
+                    key={mat.id}
+                    onClick={(e) => handleRowClick(e, mat)}
+                    className="p-4 cursor-pointer select-none hover:bg-surfaceHover transition-colors"
+                  >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <p className="font-medium text-text-primary text-sm line-clamp-2 flex-1">
                         {mat.title || <span className="italic text-text-muted">Sarlavsiz</span>}
@@ -394,35 +385,15 @@ export function MaterialsListPage() {
                         {categoryMap.get(mat.categoryId)}
                       </p>
                     )}
-                    <div className="flex items-center justify-between mt-3">
-                      <div className="flex gap-1 flex-wrap">
+                    {(mat.tags ?? []).length > 0 && (
+                      <div className="flex gap-1 flex-wrap mt-2">
                         {(mat.tags ?? []).slice(0, 2).map((tag) => (
                           <span key={tag} className="text-xs bg-primary-muted text-primary rounded-sm px-2 py-0.5">
                             {tag}
                           </span>
                         ))}
                       </div>
-                      <div className="flex gap-2">
-                        <Link
-                          to={`/materials/${mat.id}/edit`}
-                          aria-label="Tahrirlash"
-                          className="p-2 rounded-md text-text-muted hover:text-primary hover:bg-primary-muted transition-colors"
-                        >
-                          <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
-                          </svg>
-                        </Link>
-                        <button
-                          onClick={() => setDeleteTarget(mat)}
-                          aria-label="O'chirish"
-                          className="p-2 rounded-md text-text-muted hover:text-[#9b2c2c] hover:bg-[#fff5f5] transition-colors"
-                        >
-                          <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                            <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -445,7 +416,7 @@ export function MaterialsListPage() {
                   </select>
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-3">
                   <Button
                     variant="ghost"
                     size="sm"
@@ -453,30 +424,12 @@ export function MaterialsListPage() {
                     onClick={() => setOffset(Math.max(0, offset - limit))}
                     aria-label="Oldingi sahifa"
                   >
-                    ← Oldingi
+                    ←
                   </Button>
 
-                  <div className="hidden sm:flex gap-1">
-                    {Array.from({ length: Math.min(totalPages, 7) }).map((_, i) => {
-                      const page = i + 1;
-                      const isActive = page === currentPage;
-                      return (
-                        <button
-                          key={page}
-                          onClick={() => setOffset((page - 1) * limit)}
-                          className={`w-8 h-8 text-sm rounded-md transition-colors ${
-                            isActive
-                              ? 'bg-primary text-text-onPrimary font-medium'
-                              : 'text-text-secondary hover:bg-surfaceHover'
-                          }`}
-                          aria-label={`${page}-sahifa`}
-                          aria-current={isActive ? 'page' : undefined}
-                        >
-                          {page}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <span className="text-sm text-text-secondary tabular-nums">
+                    {currentPage} / {totalPages}
+                  </span>
 
                   <Button
                     variant="ghost"
@@ -485,7 +438,7 @@ export function MaterialsListPage() {
                     onClick={() => setOffset(offset + limit)}
                     aria-label="Keyingi sahifa"
                   >
-                    Keyingi →
+                    →
                   </Button>
                 </div>
               </div>

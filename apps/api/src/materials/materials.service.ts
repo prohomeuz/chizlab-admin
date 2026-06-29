@@ -89,7 +89,17 @@ export class MaterialsService {
     }
 
     if (search) {
-      qb.andWhere(`m.search_vector @@ plainto_tsquery('simple', :search)`, { search });
+      const like = `%${search}%`;
+      qb.andWhere(
+        `(m.search_vector @@ plainto_tsquery('simple', :search)
+          OR m.title ILIKE :like
+          OR m.description ILIKE :like
+          OR array_to_string(m.authors, ' ') ILIKE :like
+          OR array_to_string(m.tags, ' ') ILIKE :like
+          OR word_similarity(:search, coalesce(m.title, '')) > 0.6
+          OR word_similarity(:search, array_to_string(m.authors, ' ')) > 0.6)`,
+        { search, like },
+      );
     }
 
     const [items, total] = await qb.getManyAndCount();
@@ -175,7 +185,17 @@ export class MaterialsService {
     }
 
     if (search) {
-      qb.andWhere(`m.search_vector @@ plainto_tsquery('simple', :search)`, { search });
+      const like = `%${search}%`;
+      qb.andWhere(
+        `(m.search_vector @@ plainto_tsquery('simple', :search)
+          OR m.title ILIKE :like
+          OR m.description ILIKE :like
+          OR array_to_string(m.authors, ' ') ILIKE :like
+          OR array_to_string(m.tags, ' ') ILIKE :like
+          OR word_similarity(:search, coalesce(m.title, '')) > 0.6
+          OR word_similarity(:search, array_to_string(m.authors, ' ')) > 0.6)`,
+        { search, like },
+      );
     }
 
     const [items, total] = await qb.getManyAndCount();

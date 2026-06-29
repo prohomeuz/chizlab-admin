@@ -54,6 +54,12 @@
   *::after {
     cursor: none !important;
   }
+
+  /* Restore text cursor on text inputs */
+  input,
+  textarea {
+    cursor: auto !important;
+  }
 }
 
 /* Restore cursor on touch devices */
