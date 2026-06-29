@@ -53,7 +53,7 @@ async def post_failure(material_id: str, error_message: str) -> None:
     """
     Notify the NestJS API that AI analysis failed (terminal failure after retries).
 
-    On failure, NestJS sets status=needs_review, isReady=false.
+    On failure, NestJS sets status=draft, isReady=false.
     """
     payload: dict[str, Any] = {
         "materialId": material_id,

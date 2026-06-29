@@ -6,10 +6,12 @@ PDF handling strategy:
     This reduces token usage from ~200K to ~3K for a typical 200-page document.
   - Scanned PDFs (no extractable text): send as binary document block, max 10 MB.
   - Images: send as base64 image block.
+  - DOCX/PPTX: extract text via python-docx / python-pptx, send as plain text.
 """
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 from typing import Any
@@ -41,7 +43,7 @@ Analyze the provided educational material and return a JSON object with these fi
 
 Rules:
 - All text fields (title, description, blurb, tags) must be in Uzbek language.
-- tags: 5-8 lowercase Uzbek keywords relevant to the content.
+- tags: 4-6 lowercase Uzbek keywords relevant to the content.
 - authors: extract from the document cover/header; empty array [] if not found.
 - language: detect from the document's content language; use Uzbek name of language.
 - publish_year: integer year (e.g. 2023) or null if not found.
@@ -53,9 +55,18 @@ Rules:
 
 _SUPPORTED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
-_MAX_PAGES = 10         # birinchi 10 bet cover+mundarija+kirish uchun yetarli
-_MAX_CHARS = 8000       # ~2K token — metadata extraction uchun yetarli
-_MAX_BINARY_BYTES = 10 * 1024 * 1024  # 10 MB — scanned PDF uchun limit
+_DOCX_MIMES = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+}
+_PPTX_MIMES = {
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.ms-powerpoint",
+}
+
+_MAX_PAGES = 10
+_MAX_CHARS = 8000
+_MAX_BINARY_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 def _extract_pdf_text(pdf_bytes: bytes) -> str:
@@ -74,6 +85,26 @@ def _extract_pdf_text(pdf_bytes: bytes) -> str:
         total_pages,
     )
     return extracted
+
+
+def _extract_docx_text(data: bytes) -> str:
+    from docx import Document  # type: ignore[import-untyped]
+
+    doc = Document(io.BytesIO(data))
+    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    return "\n".join(paragraphs)[:_MAX_CHARS]
+
+
+def _extract_pptx_text(data: bytes) -> str:
+    from pptx import Presentation  # type: ignore[import-untyped]
+
+    prs = Presentation(io.BytesIO(data))
+    texts: list[str] = []
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.text.strip():
+                texts.append(shape.text.strip())
+    return "\n".join(texts)[:_MAX_CHARS]
 
 
 def _parse_response(raw_text: str) -> AnalysisResult:
@@ -162,11 +193,9 @@ class ClaudeProvider:
             extracted_text = _extract_pdf_text(media_bytes)
 
             if extracted_text:
-                # Text-based PDF — juda kam token (~3K vs ~200K)
                 combined = f"{effective_prompt}\n\n--- HUJJAT MATNI (birinchi {_MAX_PAGES} bet) ---\n{extracted_text}"
                 content = [{"type": "text", "text": combined}]
             else:
-                # Scanned PDF — binary yuborishga majburmiz, lekin hajm cheki bilan
                 if len(media_bytes) > _MAX_BINARY_BYTES:
                     raise ValueError(
                         f"Skanerdan PDF juda katta: {len(media_bytes) / 1024 / 1024:.1f} MB "
@@ -181,6 +210,22 @@ class ClaudeProvider:
                     {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": data_b64}},
                     {"type": "text", "text": effective_prompt},
                 ]
+
+        elif mime_type in _DOCX_MIMES:
+            extracted_text = _extract_docx_text(media_bytes)
+            if not extracted_text.strip():
+                raise ValueError("DOCX faylidan matn topilmadi yoki fayl bo'sh")
+            logger.info("DOCX text extraction: %d chars", len(extracted_text))
+            combined = f"{effective_prompt}\n\n--- HUJJAT MATNI (DOCX) ---\n{extracted_text}"
+            content = [{"type": "text", "text": combined}]
+
+        elif mime_type in _PPTX_MIMES:
+            extracted_text = _extract_pptx_text(media_bytes)
+            if not extracted_text.strip():
+                raise ValueError("PPTX faylidan matn topilmadi yoki fayl bo'sh")
+            logger.info("PPTX text extraction: %d chars", len(extracted_text))
+            combined = f"{effective_prompt}\n\n--- TAQDIMOT MATNI (PPTX) ---\n{extracted_text}"
+            content = [{"type": "text", "text": combined}]
 
         else:
             raise ValueError(f"Unsupported MIME type for Claude: {mime_type}")

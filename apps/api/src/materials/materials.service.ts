@@ -124,6 +124,12 @@ export class MaterialsService {
     if (dto.pageCount !== undefined) material.pageCount = dto.pageCount;
     if (dto.status !== undefined) material.status = dto.status;
 
+    // When file is replaced, reset status and re-queue AI
+    if (dto.mediaUrl && dto.mediaUrl !== hadMediaUrl) {
+      material.status = MaterialStatus.PENDING;
+      material.isReady = false;
+    }
+
     const saved = await this.materialRepo.save(material);
 
     if (dto.mediaUrl && dto.mediaUrl !== hadMediaUrl) {
@@ -233,7 +239,9 @@ export class MaterialsService {
       material.isReady = true;
       material.status = MaterialStatus.READY;
     } else {
+      // Technical failure — move out of pending so UI polling stops
       material.isReady = false;
+      material.status = MaterialStatus.DRAFT;
     }
 
     return this.materialRepo.save(material);
@@ -242,6 +250,10 @@ export class MaterialsService {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  async getProgress(materialId: string): Promise<number> {
+    return this.aiJobService.getProgress(materialId);
+  }
 
   private enqueueAiJob(materialId: string, mediaUrl: string): void {
     this.aiJobService.enqueue(materialId, mediaUrl).catch((err: unknown) => {

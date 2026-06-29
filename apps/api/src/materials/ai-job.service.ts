@@ -33,4 +33,9 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
     await this.redis.lpush(AI_JOBS_KEY, job);
     this.logger.log(`AI job enqueued for material=${materialId}`);
   }
+
+  async getProgress(materialId: string): Promise<number> {
+    const val = await this.redis.get(`material:${materialId}:progress`);
+    return val ? parseInt(val, 10) : 0;
+  }
 }

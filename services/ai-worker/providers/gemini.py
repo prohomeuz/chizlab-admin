@@ -1,11 +1,12 @@
 """
 Google Gemini AI provider implementation.
 
-Uses gemini-1.5-flash for cost-effective multimodal analysis.
-Supports: PDF, DOC, DOCX, PPT, PPTX and other document formats.
+Uses gemini-2.0-flash for cost-effective multimodal analysis.
+Supports: PDF, images, DOCX, PPTX (text extracted before sending).
 """
 from __future__ import annotations
 
+import io
 import json
 import logging
 from typing import Any
@@ -25,27 +26,61 @@ Analyze the provided educational material and return a JSON object with these fi
 {
   "title": "Concise, descriptive title (max 100 chars)",
   "description": "Plain-text summary of what this material covers (2-5 sentences)",
-  "blurb": "Short marketing teaser that motivates a student to read this (1-2 sentences, engaging tone)",
-  "tags": ["keyword1", "keyword2", "keyword3"],
-  "authors": ["Author Name 1", "Author Name 2"],
-  "language": "Language the document is written in (e.g. O'zbek, Rus, Ingliz)",
+  "blurb": "One punchy sentence in Uzbek that makes a curious student want to read this",
+  "tags": ["keyword1", "keyword2"],
+  "authors": ["Familiya Ism Otashorasi"],
+  "language": "O'zbek",
   "publish_year": 2023,
-  "country": "Country of publication (e.g. O'zbekiston, Rossiya)",
+  "country": "O'zbekiston",
   "page_count": 148,
   "suggested_category_name": "Best matching academic category (e.g. Matematika, Tarix, Informatika)"
 }
 
 Rules:
-- All text fields (title, description, blurb, tags) must be in Uzbek language.
-- tags: 5-8 lowercase Uzbek keywords relevant to the content.
-- authors: extract from the document cover/header; empty array [] if not found.
-- language: detect from the document's content language; use Uzbek name of language.
+- title, description, blurb, tags must be in Uzbek language.
+- tags: exactly 4-6 lowercase Uzbek keywords relevant to the content.
+- authors: extract ONLY the main author(s) from the document cover/header (not editors, reviewers, or series editors). Return full names in "Familiya Ism Otashorasi" format (e.g. "Raxmonjonov Xasan Aliyevich"). Empty array [] if not found.
+- language: return EXACTLY ONE value from this list — O'zbek, Rus, Ingliz, Qoraqalpoq, Tojik, Qozoq, Arabcha, Nemis, Fransuz, Xitoy, Yapon, Koreys, Turk, Fors, Italyan, Ispan. If multilingual, pick the dominant language. null if not found.
+- country: return EXACTLY ONE value from this list — O'zbekiston, Rossiya, AQSH, Buyuk Britaniya, Germaniya, Fransiya, Xitoy, Yaponiya, Janubiy Koreya, Hindiston, Turkiya, Qozog'iston, Qirg'iziston, Tojikiston, Turkmaniston, Ukraina, Belarus, Ozarbayjon, Gruziya, Kanada, Avstriya, Italiya. null if not found.
+- blurb: one short, natural sentence in Uzbek — write like recommending the book to a classmate, not like an advertisement.
 - publish_year: integer year (e.g. 2023) or null if not found.
-- country: null if not found.
 - page_count: integer or null if not determinable.
 - suggested_category_name: single category name, or null if unclear.
 - Return ONLY the raw JSON object — no markdown fences, no explanation.
 """
+
+# MIME types that Gemini inline_data does NOT support — extract text instead
+_DOCX_MIMES = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+}
+_PPTX_MIMES = {
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.ms-powerpoint",
+}
+_TEXT_EXTRACT_MIMES = _DOCX_MIMES | _PPTX_MIMES
+
+_MAX_TEXT_CHARS = 8000
+
+
+def _extract_docx_text(data: bytes) -> str:
+    from docx import Document  # type: ignore[import-untyped]
+
+    doc = Document(io.BytesIO(data))
+    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    return "\n".join(paragraphs)[:_MAX_TEXT_CHARS]
+
+
+def _extract_pptx_text(data: bytes) -> str:
+    from pptx import Presentation  # type: ignore[import-untyped]
+
+    prs = Presentation(io.BytesIO(data))
+    texts: list[str] = []
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.text.strip():
+                texts.append(shape.text.strip())
+    return "\n".join(texts)[:_MAX_TEXT_CHARS]
 
 
 class GeminiProvider:
@@ -68,7 +103,8 @@ class GeminiProvider:
     ) -> AnalysisResult:
         import asyncio
 
-        result = await asyncio.to_thread(self._run_sync, media_bytes, mime_type, prompt)
+        effective_prompt = prompt or _ANALYSIS_PROMPT
+        result = await asyncio.to_thread(self._run_sync, media_bytes, mime_type, effective_prompt)
         return result
 
     def _run_sync(
@@ -78,15 +114,29 @@ class GeminiProvider:
         prompt: str,
     ) -> AnalysisResult:
         """Synchronous inner call — run inside asyncio.to_thread."""
-        part: dict[str, Any] = {
-            "inline_data": {
-                "mime_type": mime_type,
-                "data": media_bytes,
+        if mime_type in _TEXT_EXTRACT_MIMES:
+            if mime_type in _DOCX_MIMES:
+                extracted = _extract_docx_text(media_bytes)
+                label = "Hujjat (DOCX)"
+            else:
+                extracted = _extract_pptx_text(media_bytes)
+                label = "Taqdimot (PPTX)"
+
+            if not extracted.strip():
+                raise ValueError(f"{label} faylidan matn topilmadi yoki fayl bo'sh")
+
+            logger.info("Extracted %d chars from %s", len(extracted), label)
+            content_part: dict[str, Any] = {"text": f"[{label} matni]\n{extracted}"}
+        else:
+            content_part = {
+                "inline_data": {
+                    "mime_type": mime_type,
+                    "data": media_bytes,
+                }
             }
-        }
 
         response: GenerateContentResponse = self._model.generate_content(
-            [part, prompt],
+            [content_part, prompt],
             generation_config={"temperature": 0.2, "max_output_tokens": 2048},
         )
 

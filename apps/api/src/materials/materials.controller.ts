@@ -48,6 +48,14 @@ export class MaterialsController {
     return this.materialsService.create(dto);
   }
 
+  @Get(':id/progress')
+  @ApiOperation({ operationId: 'adminGetMaterialProgress', summary: 'Get AI processing progress (0–100)' })
+  @ApiResponse({ status: 200, description: 'Progress percentage' })
+  async getProgress(@Param('id', ParseUUIDPipe) id: string): Promise<{ progress: number }> {
+    const progress = await this.materialsService.getProgress(id);
+    return { progress };
+  }
+
   @Get(':id')
   @ApiOperation({ operationId: 'adminGetMaterial', summary: 'Get material by ID (admin)' })
   @ApiResponse({ status: 200, description: 'Material found' })

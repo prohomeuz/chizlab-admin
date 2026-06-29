@@ -37,6 +37,11 @@ export async function deleteMaterial(id: string): Promise<void> {
   await apiClient.delete(`/api/admin/materials/${id}`);
 }
 
+export async function getMaterialProgress(id: string): Promise<{ progress: number }> {
+  const res = await apiClient.get<{ progress: number }>(`/api/admin/materials/${id}/progress`);
+  return res.data;
+}
+
 export async function uploadMedia(
   file: File,
   onProgress?: (pct: number) => void,

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getMaterials, deleteMaterial } from '../api/materials';
+import { getMaterials, deleteMaterial, getMaterialProgress } from '../api/materials';
 import { getCategories } from '../api/categories';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
@@ -10,6 +10,59 @@ import { Spinner } from '../components/Spinner';
 import { ConfirmModal } from '../components/Modal';
 import { useToastContext } from '../context/ToastContext';
 import type { Material, MaterialStatus, MaterialType, AdminMaterialsQuery } from '@contracts/index';
+
+function ProgressBadge({ material }: { material: Material }) {
+  const [displayed, setDisplayed] = useState<number | undefined>(undefined);
+  const animRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const { data } = useQuery({
+    queryKey: ['material-progress', material.id],
+    queryFn: () => getMaterialProgress(material.id),
+    refetchInterval: 2000,
+    enabled: material.status === 'pending',
+  });
+
+  useEffect(() => {
+    const target = data?.progress;
+    if (target === undefined) return;
+
+    // First value — show immediately, no animation
+    if (displayed === undefined) {
+      setDisplayed(target);
+      return;
+    }
+
+    // Never go backwards
+    if (target <= displayed) {
+      setDisplayed(target);
+      return;
+    }
+
+    // Animate from current displayed → target in ~1.5s
+    if (animRef.current) clearInterval(animRef.current);
+    const diff = target - displayed;
+    const stepMs = Math.max(20, 1500 / diff);
+    let cur = displayed;
+
+    animRef.current = setInterval(() => {
+      cur += 1;
+      setDisplayed(cur);
+      if (cur >= target) {
+        if (animRef.current) clearInterval(animRef.current);
+        animRef.current = null;
+      }
+    }, stepMs);
+
+    return () => {
+      if (animRef.current) {
+        clearInterval(animRef.current);
+        animRef.current = null;
+      }
+    };
+  }, [data?.progress]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return <StatusBadge status={material.status} progress={displayed} />;
+}
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 const STATUS_OPTIONS: { value: MaterialStatus | ''; label: string }[] = [
@@ -280,7 +333,7 @@ export function MaterialsListPage() {
                           {mat.categoryId ? categoryMap.get(mat.categoryId) ?? '—' : '—'}
                         </td>
                         <td className="px-4 py-3">
-                          <StatusBadge status={mat.status} />
+                          <ProgressBadge material={mat} />
                         </td>
                         <td className="px-4 py-3 text-center">
                           {mat.isReady ? (
@@ -334,7 +387,7 @@ export function MaterialsListPage() {
                       <p className="font-medium text-text-primary text-sm line-clamp-2 flex-1">
                         {mat.title || <span className="italic text-text-muted">Sarlavsiz</span>}
                       </p>
-                      <StatusBadge status={mat.status} />
+                      <ProgressBadge material={mat} />
                     </div>
                     {mat.categoryId && (
                       <p className="text-xs text-text-secondary mb-2">

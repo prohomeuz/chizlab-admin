@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { getMaterial, createMaterial, updateMaterial, uploadMedia } from '../api/materials';
+import { getMaterial, createMaterial, updateMaterial, uploadMedia, getMaterialProgress } from '../api/materials';
 import { getCategories } from '../api/categories';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
@@ -53,14 +53,28 @@ const MATERIAL_TYPES = [
   'presentation',
 ] as const;
 
+const LANGUAGES = [
+  "O'zbek", "Rus", "Ingliz", "Qoraqalpoq", "Tojik", "Qozoq",
+  "Arabcha", "Nemis", "Fransuz", "Xitoy", "Yapon", "Koreys",
+  "Turk", "Fors", "Italyan", "Ispan",
+] as const;
+
+const COUNTRIES = [
+  "O'zbekiston", "Rossiya", "AQSH", "Buyuk Britaniya", "Germaniya",
+  "Fransiya", "Xitoy", "Yaponiya", "Janubiy Koreya", "Hindiston",
+  "Turkiya", "Qozog'iston", "Qirg'iziston", "Tojikiston", "Turkmaniston",
+  "Ukraina", "Belarus", "Ozarbayjon", "Gruziya", "Kanada", "Avstriya", "Italiya",
+] as const;
+
+const CURRENT_YEAR = new Date().getFullYear();
+
 const formSchema = z.object({
   mediaUrl: z.string().nullable(),
   materialType: z.enum(MATERIAL_TYPES).nullable(),
   categoryId: z.string().nullable(),
   title: z.string().nullable().optional(),
-  description: z.string().nullable().optional(),
   blurb: z.string().nullable().optional(),
-  tags: z.array(z.string()).max(20),
+  tags: z.array(z.string()),
   authors: z.array(z.string()),
   language: z.string().nullable().optional(),
   publishYear: z.number().int().min(1900).max(2100).nullable().optional(),
@@ -79,6 +93,23 @@ function makeSchema(requireMedia: boolean) {
         message: 'Media fayl majburiy',
         path: ['mediaUrl'],
       });
+    }
+    // Tags min/max only in edit mode (AI fills them on create)
+    if (!requireMedia) {
+      if (data.tags.length < 4) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Kamida 4 ta kalit so'z",
+          path: ['tags'],
+        });
+      }
+      if (data.tags.length > 6) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Ko'pi bilan 6 ta kalit so'z",
+          path: ['tags'],
+        });
+      }
     }
   });
 }
@@ -117,20 +148,44 @@ function FieldLabel({
 // DropzoneUpload
 // ---------------------------------------------------------------------------
 
+function describeFile(url: string): string {
+  const ext = url.split('.').pop()?.toLowerCase() ?? '';
+  const map: Record<string, string> = {
+    pdf: 'PDF hujjat', doc: 'Word hujjat', docx: 'Word hujjat',
+    ppt: 'PowerPoint', pptx: 'PowerPoint', odt: 'ODT hujjat', odp: 'ODP hujjat', ods: 'ODS hujjat',
+  };
+  return map[ext] ?? 'Hujjat';
+}
+
+function getFileExt(url: string): string {
+  return (url.split('.').pop()?.toUpperCase() ?? 'FILE').slice(0, 4);
+}
+
 function DropzoneUpload({
   value,
   onChange,
   error,
+  fillHeight = false,
 }: {
   value: string | null;
   onChange: (url: string | null) => void;
   error?: string;
+  fillHeight?: boolean;
 }) {
   const [progress, setProgress] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [fadeVisible, setFadeVisible] = useState(!!value);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (value) {
+      requestAnimationFrame(() => setFadeVisible(true));
+    } else {
+      setFadeVisible(false);
+    }
+  }, [value]);
 
   const handleFile = async (file: File) => {
     if (!isAccepted(file)) {
@@ -142,6 +197,8 @@ function DropzoneUpload({
     setUploadError('');
     try {
       const res = await uploadMedia(file, (pct) => setProgress(pct));
+      setProgress(100);
+      await new Promise((r) => setTimeout(r, 800));
       onChange(res.url);
     } catch {
       setUploadError("Yuklashda xatolik yuz berdi. Qayta urinib ko'ring.");
@@ -165,111 +222,125 @@ function DropzoneUpload({
 
   const onDragLeave = () => setDragActive(false);
 
-  const fileName = value ? value.split('/').pop() : null;
-
   return (
-    <div className="flex flex-col gap-2">
+    <div className={`flex flex-col gap-2 ${fillHeight ? 'h-full' : ''}`}>
       <FieldLabel required>Media fayl</FieldLabel>
 
-      {/* Dropzone */}
-      <div
-        onDrop={onDrop}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onClick={() => !uploading && fileRef.current?.click()}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && fileRef.current?.click()}
-        aria-label="Fayl yuklash maydoni"
-        className={`
-          relative flex flex-col items-center justify-center gap-3
-          min-h-[200px] rounded-xl border-2 border-dashed cursor-pointer
-          transition-all duration-200 select-none
-          ${dragActive
-            ? 'border-focus bg-primary-muted/40'
-            : error
-            ? 'border-[#9b2c2c] bg-[#fff5f5]'
-            : 'border-border bg-bg-sunken hover:border-primary hover:bg-primary-muted/20'
-          }
-        `}
-      >
-        <input
-          ref={fileRef}
-          type="file"
-          className="hidden"
-          accept={ACCEPTED_MIME}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void handleFile(file);
-            e.target.value = '';
-          }}
-          aria-label="Fayl tanlash"
-        />
+      {/* Hidden input — always mounted so ref works from any state */}
+      <input
+        ref={fileRef}
+        type="file"
+        className="hidden"
+        accept={ACCEPTED_MIME}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handleFile(file);
+          e.target.value = '';
+        }}
+        aria-label="Fayl tanlash"
+      />
 
-        {uploading ? (
-          <div className="flex flex-col items-center gap-3 px-6">
-            <div className="animate-spin h-8 w-8 rounded-full border-2 border-accent border-t-transparent" />
-            <p className="text-sm text-text-secondary">Yuklanmoqda...</p>
-            {progress !== null && (
-              <div className="w-48 bg-bg-elevated rounded-full h-1.5">
+      {uploading ? (
+        /* ── Uploading ─────────────────────────────────────────────────── */
+        <div className="rounded-xl border border-primary/30 bg-primary-muted/10 px-4 py-4">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm text-text-primary mb-2">Yuklanmoqda...</p>
+              <div className="w-full bg-bg-elevated rounded-full h-1.5">
                 <div
-                  className="bg-accent h-full rounded-full transition-all duration-300"
-                  style={{ width: `${progress}%` }}
+                  className="bg-primary h-full rounded-full transition-all duration-300"
+                  style={{ width: `${progress ?? 0}%` }}
                   role="progressbar"
-                  aria-valuenow={progress}
+                  aria-valuenow={progress ?? 0}
                   aria-valuemin={0}
                   aria-valuemax={100}
                 />
               </div>
+            </div>
+            {progress !== null && (
+              <span className="text-sm font-semibold text-primary flex-shrink-0 tabular-nums w-10 text-right">
+                {progress}%
+              </span>
             )}
           </div>
-        ) : value ? (
-          <div className="flex flex-col items-center gap-2 px-6 text-center">
-            <svg className="h-10 w-10 text-primary" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/>
-            </svg>
-            <p className="text-sm font-medium text-text-primary truncate max-w-xs" title={fileName ?? value}>
-              {fileName ?? value}
-            </p>
-            <p className="text-xs text-text-muted">Yangilash uchun bosing yoki yangi fayl tashlang</p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-3 px-6 text-center">
-            <svg
-              className={`h-12 w-12 transition-colors ${dragActive ? 'text-primary' : 'text-text-muted'}`}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              aria-hidden="true"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.338-2.32 5.75 5.75 0 011.87 11.095H6.75z" />
-            </svg>
-            <div>
-              <p className="text-sm font-medium text-text-primary">
-                {dragActive ? 'Tashlang!' : 'Faylni shu yerga tashlang'}
-              </p>
-              <p className="text-xs text-text-muted mt-0.5">yoki</p>
+        </div>
+      ) : value ? (
+        /* ── File uploaded ──────────────────────────────────────────────── */
+        <div className={`transition-opacity duration-500 ${fadeVisible ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="rounded-xl border border-border bg-bg-elevated px-4 py-3.5">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center">
+              <span className="text-[11px] font-bold text-primary leading-none tracking-tight">
+                {getFileExt(value)}
+              </span>
             </div>
-            <Button type="button" variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}>
-              Fayl tanlash
-            </Button>
-            <p className="text-xs text-text-muted">
-              PDF · DOC · DOCX · PPT · PPTX · ODP · ODT
-            </p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-text-primary">{describeFile(value)}</p>
+              <p className="text-xs text-[#006b3c] flex items-center gap-1 mt-0.5">
+                <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                Muvaffaqiyatli yuklandi
+              </p>
+            </div>
+            <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="text-xs text-primary hover:underline"
+              >
+                O'zgartirish
+              </button>
+              <button
+                type="button"
+                onClick={() => onChange(null)}
+                className="text-xs text-text-muted hover:text-[#9b2c2c] transition-colors"
+              >
+                O'chirish
+              </button>
+            </div>
           </div>
-        )}
-      </div>
-
-      {value && !uploading && (
-        <button
-          type="button"
-          onClick={() => onChange(null)}
-          className="self-start text-xs text-text-muted hover:text-[#9b2c2c] transition-colors"
-          aria-label="Mediani tozalash"
+        </div>
+        </div>
+      ) : (
+        /* ── Empty dropzone ─────────────────────────────────────────────── */
+        <div
+          onDrop={onDrop}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onClick={() => fileRef.current?.click()}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && fileRef.current?.click()}
+          aria-label="Fayl yuklash maydoni"
+          className={`
+            flex flex-col items-center justify-center gap-3
+            ${fillHeight ? 'flex-1' : 'min-h-[240px]'} rounded-xl border-2 border-dashed cursor-pointer
+            transition-all duration-200 select-none
+            ${dragActive
+              ? 'border-primary bg-primary-muted/40'
+              : error
+              ? 'border-[#9b2c2c] bg-[#fff5f5]'
+              : 'border-border bg-bg-sunken hover:border-primary hover:bg-primary-muted/10'
+            }
+          `}
         >
-          Faylni olib tashlash
-        </button>
+          <svg
+            className={`h-8 w-8 ${dragActive ? 'text-primary' : 'text-text-muted'}`}
+            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round"
+              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+          </svg>
+          <div className="text-center px-4">
+            <p className="text-sm font-medium text-text-primary">
+              {dragActive ? 'Tashlang!' : 'Faylni tashlang yoki tanlang'}
+            </p>
+            <p className="text-xs text-text-muted mt-1">PDF · Word · PowerPoint · 100 MB gacha</p>
+          </div>
+        </div>
       )}
 
       {uploadError && <p className="text-xs text-[#9b2c2c]" role="alert">{uploadError}</p>}
@@ -377,9 +448,11 @@ function TagInput({
 }) {
   const [input, setInput] = useState('');
 
+  const MAX_TAGS = label === "Teglar (kalit so'zlar)" ? 6 : 999;
+
   const addTag = (raw: string) => {
     const tag = raw.trim();
-    if (tag && !value.includes(tag) && value.length < 20) {
+    if (tag && !value.includes(tag) && value.length < MAX_TAGS) {
       onChange([...value, tag]);
     }
     setInput('');
@@ -436,6 +509,24 @@ function TagInput({
 }
 
 // ---------------------------------------------------------------------------
+// Author name abbreviation: "Raxmonjonov Xasan Aliyevich" → "X. A. Raxmonjonov"
+// ---------------------------------------------------------------------------
+
+function abbreviateAuthor(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length < 2) return name;
+  // Already abbreviated if first word ends with "." (e.g. "A. Tilegenov", "X.A. Raxmonjonov")
+  if (parts[0]?.endsWith('.')) return name;
+  const [surname, ...given] = parts;
+  const initials = given
+    .map((p) => p[0]?.toUpperCase())
+    .filter(Boolean)
+    .map((c) => c + '.')
+    .join(' ');
+  return `${initials} ${surname}`;
+}
+
+// ---------------------------------------------------------------------------
 // Main page component
 // ---------------------------------------------------------------------------
 
@@ -452,6 +543,47 @@ export function MaterialFormPage() {
     enabled: isEdit,
     refetchInterval: (q) => q.state.data?.status === 'pending' ? 4000 : false,
   });
+
+  const { data: progressData } = useQuery({
+    queryKey: ['material-progress', id],
+    queryFn: () => getMaterialProgress(id!),
+    enabled: !!id && material?.status === 'pending',
+    refetchInterval: 2000,
+  });
+
+  const [displayedProgress, setDisplayedProgress] = useState<number | undefined>(undefined);
+  const progressAnimRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const target = progressData?.progress;
+    if (target === undefined) return;
+    if (displayedProgress === undefined) {
+      setDisplayedProgress(target);
+      return;
+    }
+    if (target <= displayedProgress) {
+      setDisplayedProgress(target);
+      return;
+    }
+    if (progressAnimRef.current) clearInterval(progressAnimRef.current);
+    const diff = target - displayedProgress;
+    const stepMs = Math.max(20, 1500 / diff);
+    let cur = displayedProgress;
+    progressAnimRef.current = setInterval(() => {
+      cur += 1;
+      setDisplayedProgress(cur);
+      if (cur >= target) {
+        if (progressAnimRef.current) clearInterval(progressAnimRef.current);
+        progressAnimRef.current = null;
+      }
+    }, stepMs);
+    return () => {
+      if (progressAnimRef.current) {
+        clearInterval(progressAnimRef.current);
+        progressAnimRef.current = null;
+      }
+    };
+  }, [progressData?.progress]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
@@ -470,7 +602,6 @@ export function MaterialFormPage() {
       materialType: null,
       categoryId: null,
       title: '',
-      description: '',
       blurb: '',
       tags: [],
       authors: [],
@@ -489,10 +620,9 @@ export function MaterialFormPage() {
         materialType: material.materialType as MaterialType | null,
         categoryId: material.categoryId,
         title: material.title ?? '',
-        description: material.description ?? '',
         blurb: material.blurb ?? '',
         tags: material.tags ?? [],
-        authors: material.authors ?? [],
+        authors: (material.authors ?? []).map(abbreviateAuthor),
         language: material.language ?? '',
         publishYear: material.publishYear ?? null,
         country: material.country ?? '',
@@ -502,6 +632,61 @@ export function MaterialFormPage() {
     }
   }, [material, reset]);
 
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [processingDisplayed, setProcessingDisplayed] = useState<number | undefined>(undefined);
+  const processingAnimRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const { data: processingMaterial } = useQuery({
+    queryKey: ['material', processingId],
+    queryFn: () => getMaterial(processingId!),
+    enabled: !!processingId,
+    refetchInterval: (q) => q.state.data?.status === 'pending' ? 3000 : false,
+  });
+
+  const { data: processingProgress } = useQuery({
+    queryKey: ['material-progress', processingId],
+    queryFn: () => getMaterialProgress(processingId!),
+    enabled: !!processingId && processingMaterial?.status === 'pending',
+    refetchInterval: 2000,
+  });
+
+  useEffect(() => {
+    const target = processingProgress?.progress;
+    if (target === undefined) return;
+    if (processingDisplayed === undefined) {
+      setProcessingDisplayed(target);
+      return;
+    }
+    if (target <= processingDisplayed) {
+      setProcessingDisplayed(target);
+      return;
+    }
+    if (processingAnimRef.current) clearInterval(processingAnimRef.current);
+    const diff = target - processingDisplayed;
+    const stepMs = Math.max(20, 1500 / diff);
+    let cur = processingDisplayed;
+    processingAnimRef.current = setInterval(() => {
+      cur += 1;
+      setProcessingDisplayed(cur);
+      if (cur >= target) {
+        if (processingAnimRef.current) clearInterval(processingAnimRef.current);
+        processingAnimRef.current = null;
+      }
+    }, stepMs);
+    return () => {
+      if (processingAnimRef.current) {
+        clearInterval(processingAnimRef.current);
+        processingAnimRef.current = null;
+      }
+    };
+  }, [processingProgress?.progress]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (processingMaterial && processingMaterial.status !== 'pending') {
+      navigate(`/materials/${processingMaterial.id}/edit`);
+    }
+  }, [processingMaterial?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const createMutation = useMutation({
     mutationFn: (values: FormValues) =>
       createMaterial({
@@ -509,10 +694,10 @@ export function MaterialFormPage() {
         materialType: values.materialType,
         categoryId: values.categoryId,
       }),
-    onSuccess: () => {
+    onSuccess: (newMaterial) => {
       void queryClient.invalidateQueries({ queryKey: ['materials'] });
       addToast('Material muvaffaqiyatli yaratildi', 'success');
-      navigate('/materials');
+      setProcessingId(newMaterial.id);
     },
     onError: () => {
       addToast('Saqlashda xatolik yuz berdi', 'error');
@@ -526,7 +711,6 @@ export function MaterialFormPage() {
         materialType: values.materialType,
         categoryId: values.categoryId,
         title: values.title || undefined,
-        description: values.description || undefined,
         blurb: values.blurb || undefined,
         tags: values.tags,
         authors: values.authors,
@@ -574,15 +758,25 @@ export function MaterialFormPage() {
     <Layout
       title={pageTitle}
       actions={
-        <Button variant="secondary" size="sm" onClick={() => navigate('/materials')}>
-          Bekor qilish
-        </Button>
+        processingId ? undefined : isEdit ? (
+          <Button variant="secondary" size="sm" onClick={() => navigate('/materials')}>
+            Bekor qilish
+          </Button>
+        ) : (
+          <Button size="sm" loading={isBusy} onClick={() => { void handleSubmit(onSubmit)(); }}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 -ml-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+            Saqlash
+          </Button>
+        )
       }
     >
       <form
+        id="material-form"
         onSubmit={(e) => { void handleSubmit(onSubmit)(e); }}
         noValidate
-        className="max-w-[1100px]"
+        className="w-full flex-1 flex flex-col"
       >
         {isEdit ? (
           // ----------------------------------------------------------------
@@ -651,25 +845,6 @@ export function MaterialFormPage() {
                   )}
                 />
 
-                <Controller
-                  name="description"
-                  control={control}
-                  render={({ field }) => (
-                    <div className="flex flex-col gap-1">
-                      <label className="text-sm font-medium text-text-primary">
-                        Tavsif <AiBadge />
-                      </label>
-                      <textarea
-                        {...field}
-                        value={field.value ?? ''}
-                        placeholder={isPending ? 'AI aniqlamoqda...' : "Material haqida batafsil ma'lumot"}
-                        disabled={isPending}
-                        rows={4}
-                        className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-2 focus:border-focus transition-all resize-y disabled:bg-bg-sunken disabled:opacity-60"
-                      />
-                    </div>
-                  )}
-                />
               </div>
 
               {/* Bibliografik ma'lumotlar */}
@@ -715,18 +890,17 @@ export function MaterialFormPage() {
                         <label className="text-sm font-medium text-text-primary">
                           Nashr yili <AiBadge />
                         </label>
-                        <input
-                          type="number"
+                        <select
                           value={field.value ?? ''}
-                          onChange={(e) =>
-                            field.onChange(e.target.value ? parseInt(e.target.value, 10) : null)
-                          }
-                          placeholder={isPending ? 'AI...' : '2024'}
+                          onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : null)}
                           disabled={isPending}
-                          min={1900}
-                          max={2100}
-                          className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
-                        />
+                          className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                        >
+                          <option value="">— Tanlang —</option>
+                          {Array.from({ length: CURRENT_YEAR - 1899 }, (_, i) => CURRENT_YEAR - i).map((y) => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                        </select>
                         {errors.publishYear && (
                           <p className="text-xs text-[#9b2c2c]">{errors.publishYear.message}</p>
                         )}
@@ -743,14 +917,18 @@ export function MaterialFormPage() {
                           Sahifa soni <AiBadge />
                         </label>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
                           value={field.value ?? ''}
-                          onChange={(e) =>
-                            field.onChange(e.target.value ? parseInt(e.target.value, 10) : null)
-                          }
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === '') { field.onChange(null); return; }
+                            if (!/^\d+$/.test(v)) return;
+                            const n = parseInt(v, 10);
+                            if (n >= 1) field.onChange(n);
+                          }}
                           placeholder={isPending ? 'AI...' : '256'}
                           disabled={isPending}
-                          min={1}
                           className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
                         />
                         {errors.pageCount && (
@@ -768,13 +946,15 @@ export function MaterialFormPage() {
                         <label className="text-sm font-medium text-text-primary">
                           Til <AiBadge />
                         </label>
-                        <input
-                          {...field}
+                        <select
                           value={field.value ?? ''}
-                          placeholder={isPending ? 'AI...' : "O'zbek"}
+                          onChange={(e) => field.onChange(e.target.value || null)}
                           disabled={isPending}
-                          className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
-                        />
+                          className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                        >
+                          <option value="">— Tanlang —</option>
+                          {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+                        </select>
                       </div>
                     )}
                   />
@@ -787,13 +967,15 @@ export function MaterialFormPage() {
                         <label className="text-sm font-medium text-text-primary">
                           Davlat <AiBadge />
                         </label>
-                        <input
-                          {...field}
+                        <select
                           value={field.value ?? ''}
-                          placeholder={isPending ? 'AI...' : 'O\'zbekiston'}
+                          onChange={(e) => field.onChange(e.target.value || null)}
                           disabled={isPending}
-                          className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
-                        />
+                          className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                        >
+                          <option value="">— Tanlang —</option>
+                          {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
                       </div>
                     )}
                   />
@@ -854,18 +1036,11 @@ export function MaterialFormPage() {
                 {material && (
                   <>
                     <div className="flex items-center gap-2 mb-3">
-                      <StatusBadge status={material.status} />
+                      <StatusBadge status={material.status} progress={displayedProgress} />
                       {material.isReady && (
                         <span className="text-xs text-[#006b3c] font-medium">AI to'ldirdi</span>
                       )}
                     </div>
-
-                    {material.status === 'pending' && (
-                      <div className="flex items-center gap-2 text-xs text-[#92550a] mb-3">
-                        <div className="animate-spin h-3 w-3 rounded-full border border-[#92550a] border-t-transparent" />
-                        AI tahlil qilmoqda...
-                      </div>
-                    )}
 
                     {material.status === 'ready' && (
                       <p className="text-xs text-[#006b3c] mb-3">
@@ -929,27 +1104,63 @@ export function MaterialFormPage() {
               </div>
             </div>
           </div>
+        ) : processingId ? (
+          // ----------------------------------------------------------------
+          // PROCESSING STATE — AI is analysing the uploaded material
+          // ----------------------------------------------------------------
+          <div className="max-w-[560px]">
+            <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-10 flex flex-col items-center text-center gap-6">
+              <div className="animate-spin h-10 w-10 rounded-full border-2 border-primary border-t-transparent flex-shrink-0" />
+              <div>
+                <h3 className="text-base font-semibold text-text-primary">Material tahlil qilinmoqda</h3>
+                <p className="text-sm text-text-muted mt-1.5 leading-relaxed">
+                  AI sarlavha, mualliflar, teglar va boshqa ma'lumotlarni aniqlamoqda...
+                </p>
+              </div>
+              {processingDisplayed !== undefined && (
+                <div className="w-full space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-muted">Tahlil</span>
+                    <span className="font-semibold text-primary tabular-nums">{processingDisplayed}%</span>
+                  </div>
+                  <div className="w-full bg-bg-sunken rounded-full h-2">
+                    <div
+                      className="bg-primary h-full rounded-full transition-all duration-300"
+                      style={{ width: `${processingDisplayed}%` }}
+                      role="progressbar"
+                      aria-valuenow={processingDisplayed}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         ) : (
           // ----------------------------------------------------------------
           // CREATE MODE — minimal: file + type + category
           // ----------------------------------------------------------------
-          <div className="max-w-[680px] space-y-5">
-            <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-6 space-y-5">
-              <Controller
-                name="mediaUrl"
-                control={control}
-                render={({ field }) => (
-                  <DropzoneUpload
-                    value={field.value}
-                    onChange={field.onChange}
-                    error={errors.mediaUrl?.message}
-                  />
-                )}
-              />
-            </div>
+          <div className="flex-1 flex flex-col gap-5">
+            <div className="grid grid-cols-[7fr_3fr] gap-5 items-stretch flex-1 min-h-0">
+              {/* Left 70%: Media fayl */}
+              <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-6 flex flex-col">
+                <Controller
+                  name="mediaUrl"
+                  control={control}
+                  render={({ field }) => (
+                    <DropzoneUpload
+                      value={field.value}
+                      onChange={field.onChange}
+                      error={errors.mediaUrl?.message}
+                      fillHeight
+                    />
+                  )}
+                />
+              </div>
 
-            <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Right 30%: Material turi + Kategoriya stacked */}
+              <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-6 flex flex-col gap-4">
                 <Controller
                   name="materialType"
                   control={control}
@@ -977,22 +1188,6 @@ export function MaterialFormPage() {
               </div>
             </div>
 
-            <div className="bg-primary-muted rounded-lg border border-primary/20 p-4">
-              <p className="text-xs text-text-secondary leading-relaxed">
-                <span className="font-medium text-primary">AI avtomatik to'ldiradi:</span>{' '}
-                sarlavha, tavsif, mualliflar, teglar, til, nashr yili, davlat va sahifa soni.
-                Fayl yuklangandan keyin tahlil boshlanadi.
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <Button type="submit" loading={isBusy}>
-                Yaratish
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => navigate('/materials')}>
-                Bekor qilish
-              </Button>
-            </div>
           </div>
         )}
       </form>

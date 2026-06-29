@@ -34,6 +34,31 @@ logger = logging.getLogger(__name__)
 
 AI_JOBS_KEY = "chizlab:ai:pending"
 MAX_RETRIES = 1
+PROGRESS_TTL = 3600  # seconds
+
+
+async def _set_progress(redis_client: aioredis.Redis, material_id: str, pct: int) -> None:
+    await redis_client.set(f"material:{material_id}:progress", str(pct), ex=PROGRESS_TTL)
+
+
+async def _progress_heartbeat(
+    redis_client: aioredis.Redis,
+    material_id: str,
+    start: int,
+    end: int,
+    total_seconds: float,
+) -> None:
+    """Continuously increments progress from start+1 to end over total_seconds.
+    Designed to run as a concurrent task during slow operations (AI call, large download).
+    Cancelled externally when the real operation completes.
+    """
+    steps = end - start
+    if steps <= 0:
+        return
+    delay = total_seconds / steps
+    for pct in range(start + 1, end + 1):
+        await asyncio.sleep(delay)
+        await _set_progress(redis_client, material_id, pct)
 
 
 def get_provider(settings=None) -> AIProvider:
@@ -58,18 +83,49 @@ async def process_job(
 ) -> None:
     logger.info("Processing job: material=%s url=%s", material_id, media_url)
 
+    # ── Step 1: Job received ────────────────────────────────────────────────
+    await _set_progress(redis_client, material_id, 3)
+
     last_error: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            media_bytes, mime_type = await storage.download_media(media_url)
-            result: AnalysisResult = await provider.analyze(media_bytes, mime_type, "")
+            # ── Step 2: Download from MinIO (heartbeat 3→28 over 5s) ─────────
+            await _set_progress(redis_client, material_id, 8)
+            download_heartbeat = asyncio.create_task(
+                _progress_heartbeat(redis_client, material_id, 8, 28, 5.0)
+            )
+            try:
+                media_bytes, mime_type = await storage.download_media(media_url)
+            finally:
+                download_heartbeat.cancel()
 
+            await _set_progress(redis_client, material_id, 30)
+            logger.info("Downloaded %d bytes (mime=%s)", len(media_bytes), mime_type)
+
+            # ── Step 3: Prepare AI request ────────────────────────────────────
+            await _set_progress(redis_client, material_id, 35)
+
+            # ── Step 4: AI analysis (heartbeat 35→78 over 45s) ───────────────
+            # 45s is a generous estimate; heartbeat is cancelled when AI returns.
+            # This gives ~1 %/sec movement so the badge always looks alive.
+            ai_heartbeat = asyncio.create_task(
+                _progress_heartbeat(redis_client, material_id, 35, 78, 45.0)
+            )
+            try:
+                result: AnalysisResult = await provider.analyze(media_bytes, mime_type, "")
+            finally:
+                ai_heartbeat.cancel()
+
+            await _set_progress(redis_client, material_id, 80)
             logger.info(
                 "Analysis OK: material=%s title=%r tags=%s",
                 material_id,
                 result.title,
                 result.tags,
             )
+
+            # ── Step 5: Parse & send callback ─────────────────────────────────
+            await _set_progress(redis_client, material_id, 88)
 
             await callback.post_success(
                 material_id=material_id,
@@ -84,6 +140,9 @@ async def process_job(
                 page_count=result.page_count,
                 suggested_category_id=None,
             )
+
+            # ── Step 6: Done (status → ready on next poll) ────────────────────
+            await _set_progress(redis_client, material_id, 96)
             return
 
         except Exception as exc:  # noqa: BLE001
