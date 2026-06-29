@@ -8,7 +8,6 @@ import { getMaterial, createMaterial, updateMaterial, uploadMedia, getMaterialPr
 import { getCategories } from '../api/categories';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/Button';
-import { StatusBadge } from '../components/StatusBadge';
 import { useToastContext } from '../context/ToastContext';
 import type { MaterialType } from '@contracts/index';
 
@@ -118,28 +117,17 @@ function makeSchema(requireMedia: boolean) {
 // Small helpers
 // ---------------------------------------------------------------------------
 
-function AiBadge() {
-  return (
-    <span className="inline-flex items-center text-[10px] font-medium bg-primary-muted text-primary rounded-sm px-1.5 py-0.5 ml-1 align-middle">
-      AI
-    </span>
-  );
-}
-
 function FieldLabel({
   children,
-  ai,
   required,
 }: {
   children: React.ReactNode;
-  ai?: boolean;
   required?: boolean;
 }) {
   return (
     <span className="text-sm font-medium text-text-primary">
       {children}
       {required && <span className="text-[#9b2c2c] ml-0.5">*</span>}
-      {ai && <AiBadge />}
     </span>
   );
 }
@@ -166,11 +154,13 @@ function DropzoneUpload({
   onChange,
   error,
   fillHeight = false,
+  readOnly = false,
 }: {
   value: string | null;
   onChange: (url: string | null) => void;
   error?: string;
   fillHeight?: boolean;
+  readOnly?: boolean;
 }) {
   const [progress, setProgress] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -277,28 +267,42 @@ function DropzoneUpload({
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-text-primary">{describeFile(value)}</p>
-              <p className="text-xs text-[#006b3c] flex items-center gap-1 mt-0.5">
-                <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                Muvaffaqiyatli yuklandi
-              </p>
+              {!readOnly && (
+                <p className="text-xs text-[#006b3c] flex items-center gap-1 mt-0.5">
+                  <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Muvaffaqiyatli yuklandi
+                </p>
+              )}
             </div>
             <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
+              <a
+                href={value}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-xs text-primary hover:underline"
               >
-                O'zgartirish
-              </button>
-              <button
-                type="button"
-                onClick={() => onChange(null)}
-                className="text-xs text-text-muted hover:text-[#9b2c2c] transition-colors"
-              >
-                O'chirish
-              </button>
+                Ko'rish
+              </a>
+              {!readOnly && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    O'zgartirish
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChange(null)}
+                    className="text-xs text-text-muted hover:text-[#9b2c2c] transition-colors"
+                  >
+                    O'chirish
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -379,17 +383,22 @@ function CategorySelect({
   return (
     <div className="flex flex-col gap-1">
       <FieldLabel required>Kategoriya</FieldLabel>
-      <select
-        value={value ?? ''}
-        onChange={(e) => onChange(e.target.value || null)}
-        className={`w-full bg-bg-elevated border rounded-md px-[14px] py-[10px] text-base text-text-primary focus:outline-none focus:border-2 focus:border-focus transition-all ${
-          error ? 'border-2 border-[#9b2c2c]' : 'border-border'
-        }`}
-        aria-invalid={error ? true : undefined}
-      >
-        <option value="">Kategoriyani tanlang</option>
-        {renderOptions(roots)}
-      </select>
+      <div className="relative">
+        <select
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value || null)}
+          className={`w-full appearance-none bg-bg-elevated border-2 rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all ${
+            error ? 'border-[#9b2c2c]' : 'border-border'
+          }`}
+          aria-invalid={error ? true : undefined}
+        >
+          <option value="">Kategoriyani tanlang</option>
+          {renderOptions(roots)}
+        </select>
+        <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
+      </div>
       {error && <p className="text-xs text-[#9b2c2c]" role="alert">{error}</p>}
     </div>
   );
@@ -411,19 +420,24 @@ function MaterialTypeSelect({
   return (
     <div className="flex flex-col gap-1">
       <FieldLabel required>Material turi</FieldLabel>
-      <select
-        value={value ?? ''}
-        onChange={(e) => onChange((e.target.value as MaterialType) || null)}
-        className={`w-full bg-bg-elevated border rounded-md px-[14px] py-[10px] text-base text-text-primary focus:outline-none focus:border-2 focus:border-focus transition-all ${
-          error ? 'border-2 border-[#9b2c2c]' : 'border-border'
-        }`}
-        aria-invalid={error ? true : undefined}
-      >
-        <option value="">Material turini tanlang</option>
-        {MATERIAL_TYPE_OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>{opt.label}</option>
-        ))}
-      </select>
+      <div className="relative">
+        <select
+          value={value ?? ''}
+          onChange={(e) => onChange((e.target.value as MaterialType) || null)}
+          className={`w-full appearance-none bg-bg-elevated border-2 rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all ${
+            error ? 'border-[#9b2c2c]' : 'border-border'
+          }`}
+          aria-invalid={error ? true : undefined}
+        >
+          <option value="">Material turini tanlang</option>
+          {MATERIAL_TYPE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+        <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
+      </div>
       {error && <p className="text-xs text-[#9b2c2c]" role="alert">{error}</p>}
     </div>
   );
@@ -438,13 +452,11 @@ function TagInput({
   onChange,
   error,
   label,
-  ai,
 }: {
   value: string[];
   onChange: (v: string[]) => void;
   error?: string;
   label: string;
-  ai?: boolean;
 }) {
   const [input, setInput] = useState('');
 
@@ -471,10 +483,10 @@ function TagInput({
 
   return (
     <div className="flex flex-col gap-1">
-      <FieldLabel ai={ai}>{label}</FieldLabel>
+      <FieldLabel>{label}</FieldLabel>
       <div
-        className={`flex flex-wrap gap-1.5 items-center bg-bg-elevated border rounded-md px-3 py-2 min-h-[44px] focus-within:border-2 focus-within:border-focus transition-all ${
-          error ? 'border-2 border-[#9b2c2c]' : 'border-border'
+        className={`flex flex-wrap gap-1.5 items-center bg-bg-elevated border-2 rounded-md px-3 py-2 min-h-[44px] focus-within:border-focus transition-all ${
+          error ? 'border-[#9b2c2c]' : 'border-border'
         }`}
       >
         {value.map((tag) => (
@@ -544,46 +556,6 @@ export function MaterialFormPage() {
     refetchInterval: (q) => q.state.data?.status === 'pending' ? 4000 : false,
   });
 
-  const { data: progressData } = useQuery({
-    queryKey: ['material-progress', id],
-    queryFn: () => getMaterialProgress(id!),
-    enabled: !!id && material?.status === 'pending',
-    refetchInterval: 2000,
-  });
-
-  const [displayedProgress, setDisplayedProgress] = useState<number | undefined>(undefined);
-  const progressAnimRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    const target = progressData?.progress;
-    if (target === undefined) return;
-    if (displayedProgress === undefined) {
-      setDisplayedProgress(target);
-      return;
-    }
-    if (target <= displayedProgress) {
-      setDisplayedProgress(target);
-      return;
-    }
-    if (progressAnimRef.current) clearInterval(progressAnimRef.current);
-    const diff = target - displayedProgress;
-    const stepMs = Math.max(20, 1500 / diff);
-    let cur = displayedProgress;
-    progressAnimRef.current = setInterval(() => {
-      cur += 1;
-      setDisplayedProgress(cur);
-      if (cur >= target) {
-        if (progressAnimRef.current) clearInterval(progressAnimRef.current);
-        progressAnimRef.current = null;
-      }
-    }, stepMs);
-    return () => {
-      if (progressAnimRef.current) {
-        clearInterval(progressAnimRef.current);
-        progressAnimRef.current = null;
-      }
-    };
-  }, [progressData?.progress]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
@@ -782,9 +754,8 @@ export function MaterialFormPage() {
           // ----------------------------------------------------------------
           // EDIT MODE — full form
           // ----------------------------------------------------------------
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_360px] gap-6">
-            {/* Left column */}
-            <div className="space-y-5">
+          <div className="grid grid-cols-[65fr_35fr] gap-6 items-start">
+          <div className="space-y-5">
               {/* Media */}
               <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-6">
                 <Controller
@@ -795,6 +766,7 @@ export function MaterialFormPage() {
                       value={field.value}
                       onChange={field.onChange}
                       error={errors.mediaUrl?.message}
+                      readOnly={isEdit}
                     />
                   )}
                 />
@@ -812,14 +784,14 @@ export function MaterialFormPage() {
                   render={({ field }) => (
                     <div className="flex flex-col gap-1">
                       <label className="text-sm font-medium text-text-primary">
-                        Sarlavha <AiBadge />
+                        Sarlavha
                       </label>
                       <input
                         {...field}
                         value={field.value ?? ''}
                         placeholder={isPending ? 'AI aniqlamoqda...' : 'Sarlavha'}
                         disabled={isPending}
-                        className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                        className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
                       />
                     </div>
                   )}
@@ -831,7 +803,7 @@ export function MaterialFormPage() {
                   render={({ field }) => (
                     <div className="flex flex-col gap-1">
                       <label className="text-sm font-medium text-text-primary">
-                        Qisqa ta'rif <AiBadge />
+                        Qisqa ta'rif
                       </label>
                       <textarea
                         {...field}
@@ -839,7 +811,7 @@ export function MaterialFormPage() {
                         placeholder={isPending ? 'AI aniqlamoqda...' : 'Materialning qisqa marketing tavsifi'}
                         disabled={isPending}
                         rows={3}
-                        className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-2 focus:border-focus transition-all resize-y disabled:bg-bg-sunken disabled:opacity-60"
+                        className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all resize-y disabled:bg-bg-sunken disabled:opacity-60"
                       />
                     </div>
                   )}
@@ -861,7 +833,6 @@ export function MaterialFormPage() {
                       value={field.value}
                       onChange={field.onChange}
                       label="Mualliflar"
-                      ai
                       error={errors.authors?.message}
                     />
                   )}
@@ -875,7 +846,6 @@ export function MaterialFormPage() {
                       value={field.value}
                       onChange={field.onChange}
                       label="Teglar (kalit so'zlar)"
-                      ai
                       error={errors.tags?.message}
                     />
                   )}
@@ -888,19 +858,24 @@ export function MaterialFormPage() {
                     render={({ field }) => (
                       <div className="flex flex-col gap-1">
                         <label className="text-sm font-medium text-text-primary">
-                          Nashr yili <AiBadge />
+                          Nashr yili
                         </label>
-                        <select
-                          value={field.value ?? ''}
-                          onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : null)}
-                          disabled={isPending}
-                          className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
-                        >
-                          <option value="">— Tanlang —</option>
-                          {Array.from({ length: CURRENT_YEAR - 1899 }, (_, i) => CURRENT_YEAR - i).map((y) => (
-                            <option key={y} value={y}>{y}</option>
-                          ))}
-                        </select>
+                        <div className="relative">
+                          <select
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : null)}
+                            disabled={isPending}
+                            className="w-full appearance-none bg-bg-elevated border-2 border-border rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                          >
+                            <option value="">— Tanlang —</option>
+                            {Array.from({ length: CURRENT_YEAR - 1899 }, (_, i) => CURRENT_YEAR - i).map((y) => (
+                              <option key={y} value={y}>{y}</option>
+                            ))}
+                          </select>
+                          <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </div>
                         {errors.publishYear && (
                           <p className="text-xs text-[#9b2c2c]">{errors.publishYear.message}</p>
                         )}
@@ -914,7 +889,7 @@ export function MaterialFormPage() {
                     render={({ field }) => (
                       <div className="flex flex-col gap-1">
                         <label className="text-sm font-medium text-text-primary">
-                          Sahifa soni <AiBadge />
+                          Sahifa soni
                         </label>
                         <input
                           type="text"
@@ -929,7 +904,7 @@ export function MaterialFormPage() {
                           }}
                           placeholder={isPending ? 'AI...' : '256'}
                           disabled={isPending}
-                          className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                          className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
                         />
                         {errors.pageCount && (
                           <p className="text-xs text-[#9b2c2c]">{errors.pageCount.message}</p>
@@ -944,17 +919,22 @@ export function MaterialFormPage() {
                     render={({ field }) => (
                       <div className="flex flex-col gap-1">
                         <label className="text-sm font-medium text-text-primary">
-                          Til <AiBadge />
+                          Til
                         </label>
-                        <select
-                          value={field.value ?? ''}
-                          onChange={(e) => field.onChange(e.target.value || null)}
-                          disabled={isPending}
-                          className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
-                        >
-                          <option value="">— Tanlang —</option>
-                          {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
-                        </select>
+                        <div className="relative">
+                          <select
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value || null)}
+                            disabled={isPending}
+                            className="w-full appearance-none bg-bg-elevated border-2 border-border rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                          >
+                            <option value="">— Tanlang —</option>
+                            {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+                          </select>
+                          <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </div>
                       </div>
                     )}
                   />
@@ -965,17 +945,22 @@ export function MaterialFormPage() {
                     render={({ field }) => (
                       <div className="flex flex-col gap-1">
                         <label className="text-sm font-medium text-text-primary">
-                          Davlat <AiBadge />
+                          Davlat
                         </label>
-                        <select
-                          value={field.value ?? ''}
-                          onChange={(e) => field.onChange(e.target.value || null)}
-                          disabled={isPending}
-                          className="w-full bg-bg-elevated border border-border rounded-md px-[14px] py-[10px] text-base text-text-primary focus:outline-none focus:border-2 focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
-                        >
-                          <option value="">— Tanlang —</option>
-                          {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                        </select>
+                        <div className="relative">
+                          <select
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(e.target.value || null)}
+                            disabled={isPending}
+                            className="w-full appearance-none bg-bg-elevated border-2 border-border rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                          >
+                            <option value="">— Tanlang —</option>
+                            {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </div>
                       </div>
                     )}
                   />
@@ -1027,82 +1012,11 @@ export function MaterialFormPage() {
               </div>
             </div>
 
-            {/* Right column */}
-            <div className="space-y-4">
-              {/* AI holati */}
-              <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-5">
-                <h3 className="text-sm font-medium text-text-primary mb-3">AI holati</h3>
+          {/* Right column — placeholder */}
+          <div className="sticky top-0 bg-bg-elevated rounded-lg border border-dashed border-border flex items-center justify-center min-h-[200px]">
+            <p className="text-sm text-text-muted">Placeholder</p>
+          </div>
 
-                {material && (
-                  <>
-                    <div className="flex items-center gap-2 mb-3">
-                      <StatusBadge status={material.status} progress={displayedProgress} />
-                      {material.isReady && (
-                        <span className="text-xs text-[#006b3c] font-medium">AI to'ldirdi</span>
-                      )}
-                    </div>
-
-                    {material.status === 'ready' && (
-                      <p className="text-xs text-[#006b3c] mb-3">
-                        ✓ AI muvaffaqiyatli tahlil qildi.
-                      </p>
-                    )}
-                  </>
-                )}
-
-                {/* Draft toggle — only when not pending */}
-                {material && material.status !== 'pending' && (
-                  <Controller
-                    name="status"
-                    control={control}
-                    render={({ field }) => (
-                      <label className="flex items-start gap-3 cursor-pointer mt-3 pt-3 border-t border-border">
-                        <input
-                          type="checkbox"
-                          checked={field.value === 'draft'}
-                          onChange={(e) =>
-                            field.onChange(e.target.checked ? 'draft' : 'ready')
-                          }
-                          className="mt-0.5 h-4 w-4 accent-accent"
-                          aria-label="Qoralama sifatida yashirish"
-                        />
-                        <div>
-                          <p className="text-sm font-medium text-text-primary">Qoralama</p>
-                          <p className="text-xs text-text-muted mt-0.5">
-                            Jamoat API'da ko'rinmaydi
-                          </p>
-                        </div>
-                      </label>
-                    )}
-                  />
-                )}
-
-                {material && (
-                  <div className="mt-4 pt-4 border-t border-border space-y-1 text-xs text-text-muted">
-                    <p>
-                      Yaratilgan:{' '}
-                      {new Date(material.createdAt).toLocaleDateString('uz-UZ', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                      })}
-                    </p>
-                    <p>
-                      Yangilangan:{' '}
-                      {new Date(material.updatedAt).toLocaleDateString('uz-UZ', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                      })}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Help */}
-              <div className="bg-primary-muted rounded-lg border border-primary/20 p-5">
-                <h3 className="text-sm font-medium text-primary mb-2">Ma'lumot</h3>
-                <p className="text-xs text-text-secondary leading-relaxed">
-                  Material yaratilganda AI avtomatik ravishda hujjatni tahlil qilib sarlavha, tavsif, mualliflar, teglar va boshqa ma'lumotlarni to'ldiradi. Barcha maydonlarni keyinchalik qo'lda tahrirlash mumkin.
-                </p>
-              </div>
-            </div>
           </div>
         ) : processingId ? (
           // ----------------------------------------------------------------
@@ -1154,6 +1068,7 @@ export function MaterialFormPage() {
                       onChange={field.onChange}
                       error={errors.mediaUrl?.message}
                       fillHeight
+                      readOnly={isEdit}
                     />
                   )}
                 />
