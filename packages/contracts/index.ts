@@ -51,6 +51,8 @@ export interface Material {
   materialType: MaterialType | null;
   /** MinIO URL of the uploaded media file. Null until media is uploaded. */
   mediaUrl: string | null;
+  /** MinIO URL of the AI-generated cover image. Null until cover is generated. */
+  coverUrl: string | null;
   /** Free-text tags (5-6 keywords). AI-fillable. */
   tags: string[];
   /** Author names extracted by AI. */
@@ -94,6 +96,7 @@ export interface PublicMaterial {
   description: string;
   categoryId: string | null;
   mediaUrl: string | null;
+  coverUrl: string | null;
   tags: string[];
   status: MaterialStatus;
   isReady: boolean;

@@ -19,5 +19,6 @@ export default new DataSource({
   entities: [path.resolve(__dirname, '../**/*.entity{.ts,.js}')],
   migrations: [path.resolve(__dirname, '../migrations/*{.ts,.js}')],
   synchronize: false,
+  migrationsTransactionMode: 'each',
   logging: process.env['NODE_ENV'] !== 'production',
 });

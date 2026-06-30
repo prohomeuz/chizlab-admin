@@ -42,6 +42,9 @@ export class Material {
   @Column({ type: 'text', nullable: true, name: 'media_url' })
   mediaUrl!: string | null;
 
+  @Column({ type: 'text', nullable: true, name: 'cover_url' })
+  coverUrl!: string | null;
+
   @Column({ type: 'text', array: true, default: [] })
   tags!: string[];
 

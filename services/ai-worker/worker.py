@@ -17,6 +17,7 @@ import sys
 import redis.asyncio as aioredis
 
 import callback
+import cover_generator
 import storage
 from config import get_settings
 from providers.base import AIProvider, AnalysisResult
@@ -124,7 +125,25 @@ async def process_job(
                 result.tags,
             )
 
-            # ── Step 5: Parse & send callback ─────────────────────────────────
+            # ── Step 5: Generate cover image ──────────────────────────────────
+            await _set_progress(redis_client, material_id, 85)
+            cover_url: str | None = None
+            try:
+                cover_bytes = cover_generator.generate_cover(
+                    title=result.title or "",
+                    authors=result.authors or [],
+                    publish_year=result.publish_year,
+                    country=result.country,
+                )
+                cover_url = await storage.upload_cover(
+                    cover_bytes,
+                    f"cover-{material_id}.jpg",
+                )
+                logger.info("Cover generated and uploaded: %s", cover_url)
+            except Exception as cover_exc:  # noqa: BLE001
+                logger.warning("Cover generation failed (non-fatal): %s", cover_exc)
+
+            # ── Step 6: Parse & send callback ─────────────────────────────────
             await _set_progress(redis_client, material_id, 88)
 
             await callback.post_success(
@@ -139,9 +158,10 @@ async def process_job(
                 country=result.country,
                 page_count=result.page_count,
                 suggested_category_id=None,
+                cover_url=cover_url,
             )
 
-            # ── Step 6: Done (status → ready on next poll) ────────────────────
+            # ── Step 7: Done (status → ready on next poll) ────────────────────
             await _set_progress(redis_client, material_id, 96)
             return
 

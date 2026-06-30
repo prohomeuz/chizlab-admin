@@ -4,6 +4,7 @@ Downloads media files from MinIO given a public or internal URL.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from urllib.parse import urlparse
@@ -47,6 +48,43 @@ def _extract_key_from_url(media_url: str) -> str:
     return parts[1] if len(parts) > 1 else path
 
 
+async def upload_cover(image_bytes: bytes, key: str) -> str:
+    """
+    Upload a cover JPEG to MinIO and return its public URL.
+
+    Args:
+        image_bytes: Raw JPEG bytes of the generated cover.
+        key:         Object key in the bucket (e.g. "cover-<uuid>.jpg").
+
+    Returns:
+        Public URL of the uploaded cover image.
+    """
+    return await asyncio.to_thread(_upload_sync, image_bytes, key)
+
+
+def _upload_sync(image_bytes: bytes, key: str) -> str:
+    """Synchronous upload — run inside asyncio.to_thread."""
+    import io as _io
+
+    settings = get_settings()
+    client = _get_s3_client()
+
+    logger.info("Uploading cover to s3://%s/%s (%d bytes)", settings.minio_bucket, key, len(image_bytes))
+
+    client.upload_fileobj(
+        _io.BytesIO(image_bytes),
+        settings.minio_bucket,
+        key,
+        ExtraArgs={"ContentType": "image/jpeg"},
+    )
+
+    # MINIO_PUBLIC_URL already includes the bucket name (e.g. http://host:9100/chizlab-media)
+    # so we just append the key — same pattern as the NestJS upload service.
+    url = f"{settings.minio_public_url.rstrip('/')}/{key}"
+    logger.info("Cover uploaded: %s", url)
+    return url
+
+
 async def download_media(media_url: str) -> tuple[bytes, str]:
     """
     Download a media file from MinIO and return (bytes, mime_type).
@@ -60,8 +98,6 @@ async def download_media(media_url: str) -> tuple[bytes, str]:
     Returns:
         Tuple of (file_bytes, mime_type).
     """
-    import asyncio
-
     return await asyncio.to_thread(_download_sync, media_url)
 
 

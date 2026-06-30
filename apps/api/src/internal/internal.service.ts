@@ -35,6 +35,7 @@ export class InternalService {
       country: dto.country,
       pageCount: dto.pageCount,
       suggestedCategoryId: validatedCategoryId,
+      coverUrl: dto.coverUrl,
       error: dto.error,
     });
 

@@ -24,7 +24,7 @@ _ANALYSIS_PROMPT = """
 Analyze the provided educational material and return a JSON object with these fields:
 
 {
-  "title": "Concise, descriptive title (max 100 chars)",
+  "title": "Topografik chizmachilik",
   "description": "Plain-text summary of what this material covers (2-5 sentences)",
   "blurb": "One punchy sentence in Uzbek that makes a curious student want to read this",
   "tags": ["keyword1", "keyword2"],
@@ -37,6 +37,7 @@ Analyze the provided educational material and return a JSON object with these fi
 }
 
 Rules:
+- title: copy the EXACT title text as it visually appears in the document (largest/most prominent heading). Do NOT paraphrase, summarize, or generate a new title — copy it word for word. ONLY strip appended material-type descriptors that are NOT part of the title itself: "darslik", "o'quv qo'llanma", "o'quv uslubiy qo'llanma", "kitob", "majmua" and their combinations. For textbooks: the title is the subject/topic name — strip the material-type suffix. For articles/papers/journals: copy the full title as written, no matter how long. CORRECT (textbook): "Topografik chizmachilik". CORRECT (article): "Oliy ta'lim tizimida muhandislik grafikasi fanlarini qiyosiy o'qitilishining asosiy xususiyatlari". WRONG: "Topografik chizmachilik: Oliy o'quv yurtlari uchun darslik", "Chizmachilik (Topografik chizmachilik) o'quv qo'llanma".
 - title, description, blurb, tags must be in Uzbek language.
 - tags: exactly 4-6 lowercase Uzbek keywords relevant to the content.
 - authors: extract ONLY the main author(s) from the document cover/header (not editors, reviewers, or series editors). Return full names in "Familiya Ism Otashorasi" format (e.g. "Raxmonjonov Xasan Aliyevich"). Empty array [] if not found.

@@ -754,7 +754,7 @@ export function MaterialFormPage() {
           // ----------------------------------------------------------------
           // EDIT MODE — full form
           // ----------------------------------------------------------------
-          <div className="grid grid-cols-[65fr_35fr] gap-6 items-start">
+          <div className="grid grid-cols-[70fr_30fr] gap-6 items-start">
           <div className="space-y-5">
               {/* Media */}
               <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-6">
@@ -1012,9 +1012,21 @@ export function MaterialFormPage() {
               </div>
             </div>
 
-          {/* Right column — placeholder */}
-          <div className="sticky top-0 bg-bg-elevated rounded-lg border border-dashed border-border flex items-center justify-center min-h-[200px]">
-            <p className="text-sm text-text-muted">Placeholder</p>
+          {/* Right column — muqova rasmi */}
+          <div className="sticky top-0">
+            {material?.coverUrl ? (
+              <img
+                src={material.coverUrl}
+                alt="Muqova"
+                className="w-full rounded-lg object-cover shadow-card"
+              />
+            ) : (
+              <div className="bg-bg-elevated rounded-lg border border-dashed border-border flex items-center justify-center min-h-[200px]">
+                <p className="text-sm text-text-muted">
+                  {isPending ? 'Muqova generatsiya qilinmoqda...' : 'Muqova mavjud emas'}
+                </p>
+              </div>
+            )}
           </div>
 
           </div>

@@ -235,6 +235,7 @@ export class MaterialsService {
       country?: string | null;
       pageCount?: number | null;
       suggestedCategoryId?: string | null;
+      coverUrl?: string | null;
       error?: string | null;
     },
   ): Promise<Material> {
@@ -256,6 +257,7 @@ export class MaterialsService {
       if (fields.suggestedCategoryId != null) {
         material.categoryId = fields.suggestedCategoryId;
       }
+      if (fields.coverUrl != null) material.coverUrl = fields.coverUrl;
       material.isReady = true;
       material.status = MaterialStatus.READY;
     } else {

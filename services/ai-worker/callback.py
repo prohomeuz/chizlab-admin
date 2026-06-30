@@ -26,6 +26,7 @@ async def post_success(
     country: str | None,
     page_count: int | None,
     suggested_category_id: str | None,
+    cover_url: str | None = None,
 ) -> None:
     """
     Notify the NestJS API that AI analysis succeeded.
@@ -45,6 +46,7 @@ async def post_success(
         "country": country,
         "pageCount": page_count,
         "suggestedCategoryId": suggested_category_id,
+        "coverUrl": cover_url,
     }
     await _send(payload)
 

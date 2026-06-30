@@ -79,5 +79,10 @@ export class AiResultDto {
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()
+  coverUrl?: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsString()
   error?: string | null;
 }

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
 
     minio_endpoint: str = "http://localhost:9000"
+    minio_public_url: str = "http://localhost:9000/chizlab-media"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "chizlab-media"
