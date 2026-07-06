@@ -48,10 +48,9 @@ export function Modal({ open, onClose, title, children, actions, wide }: ModalPr
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className={`relative z-10 bg-surface rounded-lg shadow-modal w-full flex flex-col outline-none ${
+        className={`relative z-10 bg-surface rounded-lg shadow-modal w-full flex flex-col outline-none modal-in ${
           wide ? 'max-w-[800px]' : 'max-w-[560px]'
         }`}
-        style={{ animation: 'modalIn 300ms cubic-bezier(0.4,0,0.2,1)' }}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 id="modal-title" className="text-lg font-medium text-text-primary">
@@ -74,12 +73,6 @@ export function Modal({ open, onClose, title, children, actions, wide }: ModalPr
           </div>
         )}
       </div>
-      <style>{`
-        @keyframes modalIn {
-          from { opacity: 0; transform: scale(0.95); }
-          to   { opacity: 1; transform: scale(1); }
-        }
-      `}</style>
     </div>
   );
 }

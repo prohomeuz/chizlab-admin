@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     minio_bucket: str = "chizlab-media"
 
     internal_callback_url: str = "http://localhost:3000/internal/ai-result"
+    internal_page_prep_callback_url: str = "http://localhost:3000/internal/page-prep-result"
     internal_callback_secret: str = ""
 
     # Options: "gemini" | "openai" | "claude"

@@ -9,6 +9,8 @@ import type {
   UpdateMaterialDto,
   AdminMaterialsQuery,
   UploadResponse,
+  PreparePagesResponse,
+  PreparePagesStatus,
 } from '@contracts/index';
 
 export async function getMaterials(
@@ -39,6 +41,20 @@ export async function deleteMaterial(id: string): Promise<void> {
 
 export async function getMaterialProgress(id: string): Promise<{ progress: number }> {
   const res = await apiClient.get<{ progress: number }>(`/api/admin/materials/${id}/progress`);
+  return res.data;
+}
+
+export async function preparePages(mediaUrl: string): Promise<PreparePagesResponse> {
+  const res = await apiClient.post<PreparePagesResponse>('/api/admin/materials/prepare-pages', {
+    mediaUrl,
+  });
+  return res.data;
+}
+
+export async function getPagePrepStatus(jobId: string): Promise<PreparePagesStatus> {
+  const res = await apiClient.get<PreparePagesStatus>(
+    `/api/admin/materials/prepare-pages/${jobId}`,
+  );
   return res.data;
 }
 

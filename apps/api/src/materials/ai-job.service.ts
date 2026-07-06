@@ -28,8 +28,16 @@ export class AiJobService implements OnModuleInit, OnModuleDestroy {
     await this.redis.quit();
   }
 
-  async enqueue(materialId: string, mediaUrl: string): Promise<void> {
-    const job = JSON.stringify({ materialId, mediaUrl });
+  async enqueue(
+    materialId: string,
+    mediaUrl: string,
+    selectedPages?: number[] | null,
+  ): Promise<void> {
+    const job = JSON.stringify({
+      materialId,
+      mediaUrl,
+      selectedPages: selectedPages ?? null,
+    });
     await this.redis.lpush(AI_JOBS_KEY, job);
     this.logger.log(`AI job enqueued for material=${materialId}`);
   }

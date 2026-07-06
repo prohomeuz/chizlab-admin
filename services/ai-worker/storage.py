@@ -48,40 +48,46 @@ def _extract_key_from_url(media_url: str) -> str:
     return parts[1] if len(parts) > 1 else path
 
 
-async def upload_cover(image_bytes: bytes, key: str) -> str:
+async def upload_image(image_bytes: bytes, key: str, content_type: str = "image/jpeg") -> str:
     """
-    Upload a cover JPEG to MinIO and return its public URL.
+    Upload an image to MinIO and return its public URL.
 
     Args:
-        image_bytes: Raw JPEG bytes of the generated cover.
-        key:         Object key in the bucket (e.g. "cover-<uuid>.jpg").
+        image_bytes:  Raw image bytes.
+        key:          Object key in the bucket (e.g. "cover-<uuid>.jpg").
+        content_type: MIME type to store on the object.
 
     Returns:
-        Public URL of the uploaded cover image.
+        Public URL of the uploaded image.
     """
-    return await asyncio.to_thread(_upload_sync, image_bytes, key)
+    return await asyncio.to_thread(_upload_sync, image_bytes, key, content_type)
 
 
-def _upload_sync(image_bytes: bytes, key: str) -> str:
+async def upload_cover(image_bytes: bytes, key: str) -> str:
+    """Upload a cover JPEG to MinIO and return its public URL."""
+    return await upload_image(image_bytes, key, "image/jpeg")
+
+
+def _upload_sync(image_bytes: bytes, key: str, content_type: str) -> str:
     """Synchronous upload — run inside asyncio.to_thread."""
     import io as _io
 
     settings = get_settings()
     client = _get_s3_client()
 
-    logger.info("Uploading cover to s3://%s/%s (%d bytes)", settings.minio_bucket, key, len(image_bytes))
+    logger.info("Uploading image to s3://%s/%s (%d bytes)", settings.minio_bucket, key, len(image_bytes))
 
     client.upload_fileobj(
         _io.BytesIO(image_bytes),
         settings.minio_bucket,
         key,
-        ExtraArgs={"ContentType": "image/jpeg"},
+        ExtraArgs={"ContentType": content_type},
     )
 
     # MINIO_PUBLIC_URL already includes the bucket name (e.g. http://host:9100/chizlab-media)
     # so we just append the key — same pattern as the NestJS upload service.
     url = f"{settings.minio_public_url.rstrip('/')}/{key}"
-    logger.info("Cover uploaded: %s", url)
+    logger.info("Image uploaded: %s", url)
     return url
 
 

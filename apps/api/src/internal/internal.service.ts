@@ -3,12 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category } from '../categories/category.entity';
 import { MaterialsService } from '../materials/materials.service';
+import { PagePrepService } from '../materials/page-prep.service';
 import { AiResultDto } from './dto/ai-result.dto';
+import { PagePrepResultDto } from './dto/page-prep-result.dto';
 
 @Injectable()
 export class InternalService {
   constructor(
     private readonly materialsService: MaterialsService,
+    private readonly pagePrepService: PagePrepService,
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
   ) {}
@@ -36,6 +39,17 @@ export class InternalService {
       pageCount: dto.pageCount,
       suggestedCategoryId: validatedCategoryId,
       coverUrl: dto.coverUrl,
+      error: dto.error,
+    });
+
+    return { ok: true };
+  }
+
+  async handlePagePrepResult(dto: PagePrepResultDto): Promise<{ ok: boolean }> {
+    await this.pagePrepService.saveResult(dto.jobId, {
+      success: dto.success,
+      pageCount: dto.pageCount,
+      thumbnailUrls: dto.thumbnailUrls,
       error: dto.error,
     });
 

@@ -14,10 +14,13 @@ import logging
 import signal
 import sys
 
+import fitz  # PyMuPDF
 import redis.asyncio as aioredis
 
 import callback
 import cover_generator
+import office_convert
+import page_prep
 import storage
 from config import get_settings
 from providers.base import AIProvider, AnalysisResult
@@ -34,6 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 AI_JOBS_KEY = "chizlab:ai:pending"
+PAGE_PREP_JOBS_KEY = "chizlab:pages:pending"
 MAX_RETRIES = 1
 PROGRESS_TTL = 3600  # seconds
 
@@ -76,13 +80,29 @@ def get_provider(settings=None) -> AIProvider:
         raise ValueError(f"Unknown AI_PROVIDER: '{provider_name}'")
 
 
+async def _slice_to_selected_pages(
+    media_bytes: bytes, mime_type: str, selected_pages: list[int]
+) -> tuple[bytes, str]:
+    """Reduce a document to only the given 1-indexed pages, returning (pdf_bytes, 'application/pdf')."""
+    pdf_bytes = await office_convert.ensure_pdf(media_bytes, mime_type)
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    doc.select([p - 1 for p in selected_pages])
+    return doc.tobytes(), office_convert.PDF_MIME
+
+
 async def process_job(
     redis_client: aioredis.Redis,
     provider: AIProvider,
     material_id: str,
     media_url: str,
+    selected_pages: list[int] | None = None,
 ) -> None:
-    logger.info("Processing job: material=%s url=%s", material_id, media_url)
+    logger.info(
+        "Processing job: material=%s url=%s selectedPages=%s",
+        material_id,
+        media_url,
+        selected_pages,
+    )
 
     # ── Step 1: Job received ────────────────────────────────────────────────
     await _set_progress(redis_client, material_id, 3)
@@ -103,7 +123,16 @@ async def process_job(
             await _set_progress(redis_client, material_id, 30)
             logger.info("Downloaded %d bytes (mime=%s)", len(media_bytes), mime_type)
 
-            # ── Step 3: Prepare AI request ────────────────────────────────────
+            # ── Step 3: Prepare AI request (restrict to selected pages, if any) ──
+            if selected_pages:
+                media_bytes, mime_type = await _slice_to_selected_pages(
+                    media_bytes, mime_type, selected_pages
+                )
+                logger.info(
+                    "Sliced document to %d selected page(s) for material=%s",
+                    len(selected_pages),
+                    material_id,
+                )
             await _set_progress(redis_client, material_id, 35)
 
             # ── Step 4: AI analysis (heartbeat 35→78 over 45s) ───────────────
@@ -185,12 +214,58 @@ async def process_job(
         logger.error("Callback post_failure also failed: %s", cb_exc)
 
 
+async def _run_ai_jobs_loop(
+    redis_client: aioredis.Redis, provider: AIProvider, stop_event: asyncio.Event
+) -> None:
+    while not stop_event.is_set():
+        # BRPOP blocks up to 2 seconds then returns None — allows checking stop_event
+        result = await redis_client.brpop(AI_JOBS_KEY, timeout=2)
+        if result is None:
+            continue
+
+        _, raw = result
+        try:
+            job = json.loads(raw)
+            material_id: str = job["materialId"]
+            media_url: str = job["mediaUrl"]
+            selected_pages: list[int] | None = job.get("selectedPages")
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error("Malformed AI job payload: %r — %s", raw, e)
+            continue
+
+        await process_job(redis_client, provider, material_id, media_url, selected_pages)
+
+
+async def _run_page_prep_jobs_loop(
+    redis_client: aioredis.Redis, stop_event: asyncio.Event
+) -> None:
+    while not stop_event.is_set():
+        result = await redis_client.brpop(PAGE_PREP_JOBS_KEY, timeout=2)
+        if result is None:
+            continue
+
+        _, raw = result
+        try:
+            job = json.loads(raw)
+            job_id: str = job["jobId"]
+            media_url: str = job["mediaUrl"]
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error("Malformed page-prep job payload: %r — %s", raw, e)
+            continue
+
+        await page_prep.process_page_prep_job(redis_client, job_id, media_url)
+
+
 async def main() -> None:
     settings = get_settings()
     provider = get_provider(settings)
 
     redis_client = await aioredis.from_url(settings.redis_url)
-    logger.info("Worker started. Listening on Redis list '%s' …", AI_JOBS_KEY)
+    logger.info(
+        "Worker started. Listening on Redis lists '%s' and '%s' …",
+        AI_JOBS_KEY,
+        PAGE_PREP_JOBS_KEY,
+    )
 
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
@@ -203,23 +278,10 @@ async def main() -> None:
         loop.add_signal_handler(sig, _handle_signal)
 
     try:
-        while not stop_event.is_set():
-            # BRPOP blocks up to 2 seconds then returns None — allows checking stop_event
-            result = await redis_client.brpop(AI_JOBS_KEY, timeout=2)
-            if result is None:
-                continue
-
-            _, raw = result
-            try:
-                job = json.loads(raw)
-                material_id: str = job["materialId"]
-                media_url: str = job["mediaUrl"]
-            except (json.JSONDecodeError, KeyError) as e:
-                logger.error("Malformed job payload: %r — %s", raw, e)
-                continue
-
-            await process_job(redis_client, provider, material_id, media_url)
-
+        await asyncio.gather(
+            _run_ai_jobs_loop(redis_client, provider, stop_event),
+            _run_page_prep_jobs_loop(redis_client, stop_event),
+        )
     finally:
         await redis_client.aclose()
         logger.info("Worker stopped.")

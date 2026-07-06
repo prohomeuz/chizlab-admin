@@ -160,6 +160,11 @@ export interface CreateMaterialDto {
   title?: string;
   description?: string;
   tags?: string[];
+  /**
+   * 1-indexed page numbers to include in AI analysis.
+   * Omit (or send every page) to analyze the full document.
+   */
+  selectedPages?: number[];
 }
 
 /**
@@ -245,6 +250,29 @@ export interface RefreshResponse {
 export interface UploadResponse {
   /** Fully-qualified public MinIO URL of the uploaded file. */
   url: string;
+}
+
+// ---------------------------------------------------------------------------
+// Page-prep (page-thumbnail preview for AI-analysis page selection)
+// ---------------------------------------------------------------------------
+
+/** Request body for POST /api/admin/materials/prepare-pages. */
+export interface PreparePagesDto {
+  mediaUrl: string;
+}
+
+/** Response body from POST /api/admin/materials/prepare-pages. */
+export interface PreparePagesResponse {
+  jobId: string;
+}
+
+/** Response body from GET /api/admin/materials/prepare-pages/:jobId. */
+export interface PreparePagesStatus {
+  status: 'pending' | 'done' | 'error';
+  progress: number;
+  pageCount?: number;
+  thumbnailUrls?: string[];
+  error?: string;
 }
 
 // ---------------------------------------------------------------------------

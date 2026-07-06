@@ -38,7 +38,7 @@ export class MaterialsService {
     const saved = await this.materialRepo.save(material);
 
     if (saved.mediaUrl) {
-      this.enqueueAiJob(saved.id, saved.mediaUrl);
+      this.enqueueAiJob(saved.id, saved.mediaUrl, dto.selectedPages);
     }
 
     return saved;
@@ -277,8 +277,12 @@ export class MaterialsService {
     return this.aiJobService.getProgress(materialId);
   }
 
-  private enqueueAiJob(materialId: string, mediaUrl: string): void {
-    this.aiJobService.enqueue(materialId, mediaUrl).catch((err: unknown) => {
+  private enqueueAiJob(
+    materialId: string,
+    mediaUrl: string,
+    selectedPages?: number[],
+  ): void {
+    this.aiJobService.enqueue(materialId, mediaUrl, selectedPages).catch((err: unknown) => {
       this.logger.error(`Failed to enqueue AI job for material=${materialId}`, err);
     });
   }

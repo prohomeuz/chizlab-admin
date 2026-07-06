@@ -1,15 +1,23 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { getMaterial, createMaterial, updateMaterial, uploadMedia, getMaterialProgress } from '../api/materials';
-import { getCategories } from '../api/categories';
-import { Layout } from '../components/Layout';
-import { Button } from '../components/Button';
-import { useToastContext } from '../context/ToastContext';
-import type { MaterialType } from '@contracts/index';
+import type { MaterialType } from '@contracts/index'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { Controller, useForm } from 'react-hook-form'
+import { useNavigate, useParams } from 'react-router-dom'
+import { z } from 'zod'
+import { getCategories } from '../api/categories'
+import {
+  createMaterial,
+  getMaterial,
+  getMaterialProgress,
+  updateMaterial,
+  uploadMedia,
+} from '../api/materials'
+import { Button } from '../components/Button'
+import { Layout } from '../components/Layout'
+import { MaterialAnalyzingOverlay } from '../components/MaterialAnalyzingOverlay'
+import { PageSelectionModal } from '../components/PageSelectionModal'
+import { useToastContext } from '../context/ToastContext'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -22,7 +30,7 @@ const MATERIAL_TYPE_OPTIONS: { value: MaterialType; label: string }[] = [
   { value: 'textbook', label: 'Darslik' },
   { value: 'monograph', label: 'Monografiya' },
   { value: 'presentation', label: 'Taqdimot' },
-];
+]
 
 const ACCEPTED_MIME =
   'application/pdf,.doc,.docx,application/msword,' +
@@ -30,13 +38,27 @@ const ACCEPTED_MIME =
   'application/vnd.ms-powerpoint,.ppt,.pptx,' +
   'application/vnd.openxmlformats-officedocument.presentationml.presentation,' +
   'application/vnd.oasis.opendocument.text,' +
-  'application/vnd.oasis.opendocument.presentation,.odp,.odt,.ods';
+  'application/vnd.oasis.opendocument.presentation,.odp,.odt,.ods,' +
+  'application/vnd.ms-excel,.xls,' +
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,' +
+  'application/vnd.oasis.opendocument.spreadsheet'
 
-const ACCEPTED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.odp', '.odt', '.ods'];
+const ACCEPTED_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.ppt',
+  '.pptx',
+  '.odp',
+  '.odt',
+  '.ods',
+  '.xls',
+  '.xlsx',
+]
 
 function isAccepted(file: File): boolean {
-  const name = file.name.toLowerCase();
-  return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext));
+  const name = file.name.toLowerCase()
+  return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext))
 }
 
 // ---------------------------------------------------------------------------
@@ -50,22 +72,53 @@ const MATERIAL_TYPES = [
   'textbook',
   'monograph',
   'presentation',
-] as const;
+] as const
 
 const LANGUAGES = [
-  "O'zbek", "Rus", "Ingliz", "Qoraqalpoq", "Tojik", "Qozoq",
-  "Arabcha", "Nemis", "Fransuz", "Xitoy", "Yapon", "Koreys",
-  "Turk", "Fors", "Italyan", "Ispan",
-] as const;
+  "O'zbek",
+  'Rus',
+  'Ingliz',
+  'Qoraqalpoq',
+  'Tojik',
+  'Qozoq',
+  'Arabcha',
+  'Nemis',
+  'Fransuz',
+  'Xitoy',
+  'Yapon',
+  'Koreys',
+  'Turk',
+  'Fors',
+  'Italyan',
+  'Ispan',
+] as const
 
 const COUNTRIES = [
-  "O'zbekiston", "Rossiya", "AQSH", "Buyuk Britaniya", "Germaniya",
-  "Fransiya", "Xitoy", "Yaponiya", "Janubiy Koreya", "Hindiston",
-  "Turkiya", "Qozog'iston", "Qirg'iziston", "Tojikiston", "Turkmaniston",
-  "Ukraina", "Belarus", "Ozarbayjon", "Gruziya", "Kanada", "Avstriya", "Italiya",
-] as const;
+  "O'zbekiston",
+  'Rossiya',
+  'AQSH',
+  'Buyuk Britaniya',
+  'Germaniya',
+  'Fransiya',
+  'Xitoy',
+  'Yaponiya',
+  'Janubiy Koreya',
+  'Hindiston',
+  'Turkiya',
+  "Qozog'iston",
+  "Qirg'iziston",
+  'Tojikiston',
+  'Turkmaniston',
+  'Ukraina',
+  'Belarus',
+  'Ozarbayjon',
+  'Gruziya',
+  'Kanada',
+  'Avstriya',
+  'Italiya',
+] as const
 
-const CURRENT_YEAR = new Date().getFullYear();
+const CURRENT_YEAR = new Date().getFullYear()
 
 const formSchema = z.object({
   mediaUrl: z.string().nullable(),
@@ -80,9 +133,12 @@ const formSchema = z.object({
   country: z.string().nullable().optional(),
   pageCount: z.number().int().min(1).nullable().optional(),
   status: z.enum(['pending', 'draft', 'ready'] as const),
-});
+  // 1-indexed pages AI should analyze. null = every page. Set programmatically
+  // once the admin confirms the page-selection modal after uploading a file.
+  selectedPages: z.array(z.number()).nullable(),
+})
 
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<typeof formSchema>
 
 function makeSchema(requireMedia: boolean) {
   return formSchema.superRefine((data, ctx) => {
@@ -91,7 +147,21 @@ function makeSchema(requireMedia: boolean) {
         code: z.ZodIssueCode.custom,
         message: 'Media fayl majburiy',
         path: ['mediaUrl'],
-      });
+      })
+    }
+    if (requireMedia && !data.materialType) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Material turi majburiy',
+        path: ['materialType'],
+      })
+    }
+    if (requireMedia && !data.categoryId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Kategoriya majburiy',
+        path: ['categoryId'],
+      })
     }
     // Tags min/max only in edit mode (AI fills them on create)
     if (!requireMedia) {
@@ -100,36 +170,30 @@ function makeSchema(requireMedia: boolean) {
           code: z.ZodIssueCode.custom,
           message: "Kamida 4 ta kalit so'z",
           path: ['tags'],
-        });
+        })
       }
       if (data.tags.length > 6) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: "Ko'pi bilan 6 ta kalit so'z",
           path: ['tags'],
-        });
+        })
       }
     }
-  });
+  })
 }
 
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
 
-function FieldLabel({
-  children,
-  required,
-}: {
-  children: React.ReactNode;
-  required?: boolean;
-}) {
+function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
     <span className="text-sm font-medium text-text-primary">
       {children}
       {required && <span className="text-[#9b2c2c] ml-0.5">*</span>}
     </span>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -137,16 +201,24 @@ function FieldLabel({
 // ---------------------------------------------------------------------------
 
 function describeFile(url: string): string {
-  const ext = url.split('.').pop()?.toLowerCase() ?? '';
+  const ext = url.split('.').pop()?.toLowerCase() ?? ''
   const map: Record<string, string> = {
-    pdf: 'PDF hujjat', doc: 'Word hujjat', docx: 'Word hujjat',
-    ppt: 'PowerPoint', pptx: 'PowerPoint', odt: 'ODT hujjat', odp: 'ODP hujjat', ods: 'ODS hujjat',
-  };
-  return map[ext] ?? 'Hujjat';
+    pdf: 'PDF hujjat',
+    doc: 'Word hujjat',
+    docx: 'Word hujjat',
+    ppt: 'PowerPoint',
+    pptx: 'PowerPoint',
+    odt: 'ODT hujjat',
+    odp: 'ODP hujjat',
+    ods: 'ODS hujjat',
+    xls: 'Excel jadval',
+    xlsx: 'Excel jadval',
+  }
+  return map[ext] ?? 'Hujjat'
 }
 
 function getFileExt(url: string): string {
-  return (url.split('.').pop()?.toUpperCase() ?? 'FILE').slice(0, 4);
+  return (url.split('.').pop()?.toUpperCase() ?? 'FILE').slice(0, 4)
 }
 
 function DropzoneUpload({
@@ -155,62 +227,69 @@ function DropzoneUpload({
   error,
   fillHeight = false,
   readOnly = false,
+  disabled = false,
+  disabledHint,
 }: {
-  value: string | null;
-  onChange: (url: string | null) => void;
-  error?: string;
-  fillHeight?: boolean;
-  readOnly?: boolean;
+  value: string | null
+  onChange: (url: string | null) => void
+  error?: string
+  fillHeight?: boolean
+  readOnly?: boolean
+  disabled?: boolean
+  disabledHint?: string
 }) {
-  const [progress, setProgress] = useState<number | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const [dragActive, setDragActive] = useState(false);
-  const [fadeVisible, setFadeVisible] = useState(!!value);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [progress, setProgress] = useState<number | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const [dragActive, setDragActive] = useState(false)
+  const [fadeVisible, setFadeVisible] = useState(!!value)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (value) {
-      requestAnimationFrame(() => setFadeVisible(true));
+      requestAnimationFrame(() => setFadeVisible(true))
     } else {
-      setFadeVisible(false);
+      setFadeVisible(false)
     }
-  }, [value]);
+  }, [value])
 
   const handleFile = async (file: File) => {
+    if (disabled) return
     if (!isAccepted(file)) {
-      setUploadError("Bu fayl turi qabul qilinmaydi. PDF, DOC, DOCX, PPT, PPTX formatlarini yuklang.");
-      return;
+      setUploadError(
+        'Bu fayl turi qabul qilinmaydi. PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX formatlarini yuklang.',
+      )
+      return
     }
-    setUploading(true);
-    setProgress(0);
-    setUploadError('');
+    setUploading(true)
+    setProgress(0)
+    setUploadError('')
     try {
-      const res = await uploadMedia(file, (pct) => setProgress(pct));
-      setProgress(100);
-      await new Promise((r) => setTimeout(r, 800));
-      onChange(res.url);
+      const res = await uploadMedia(file, (pct) => setProgress(pct))
+      setProgress(100)
+      await new Promise((r) => setTimeout(r, 800))
+      onChange(res.url)
     } catch {
-      setUploadError("Yuklashda xatolik yuz berdi. Qayta urinib ko'ring.");
+      setUploadError("Yuklashda xatolik yuz berdi. Qayta urinib ko'ring.")
     } finally {
-      setUploading(false);
-      setProgress(null);
+      setUploading(false)
+      setProgress(null)
     }
-  };
+  }
 
   const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragActive(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) void handleFile(file);
-  }, []);
+    e.preventDefault()
+    setDragActive(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) void handleFile(file)
+  }, [])
 
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragActive(true);
-  };
+    e.preventDefault()
+    setDragActive(true)
+  }
 
-  const onDragLeave = () => setDragActive(false);
+  const onDragLeave = () => setDragActive(false)
 
   return (
     <div className={`flex flex-col gap-2 ${fillHeight ? 'h-full' : ''}`}>
@@ -223,9 +302,9 @@ function DropzoneUpload({
         className="hidden"
         accept={ACCEPTED_MIME}
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) void handleFile(file);
-          e.target.value = '';
+          const file = e.target.files?.[0]
+          if (file) void handleFile(file)
+          e.target.value = ''
         }}
         aria-label="Fayl tanlash"
       />
@@ -257,100 +336,141 @@ function DropzoneUpload({
         </div>
       ) : value ? (
         /* ── File uploaded ──────────────────────────────────────────────── */
-        <div className={`transition-opacity duration-500 ${fadeVisible ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="rounded-xl border border-border bg-bg-elevated px-4 py-3.5">
-          <div className="flex items-center gap-3">
-            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center">
-              <span className="text-[11px] font-bold text-primary leading-none tracking-tight">
-                {getFileExt(value)}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-text-primary">{describeFile(value)}</p>
-              {!readOnly && (
-                <p className="text-xs text-[#006b3c] flex items-center gap-1 mt-0.5">
-                  <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  Muvaffaqiyatli yuklandi
-                </p>
-              )}
-            </div>
-            <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
-              <a
-                href={value}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-primary hover:underline"
-              >
-                Ko'rish
-              </a>
-              {!readOnly && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    O'zgartirish
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onChange(null)}
-                    className="text-xs text-text-muted hover:text-[#9b2c2c] transition-colors"
-                  >
-                    O'chirish
-                  </button>
-                </>
-              )}
+        <div
+          className={`transition-opacity duration-500 ${fadeVisible ? 'opacity-100' : 'opacity-0'}`}
+        >
+          <div className="rounded-xl border border-border bg-bg-elevated px-4 py-3.5">
+            <div className="flex items-center gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary-muted flex items-center justify-center">
+                <span className="text-[11px] font-bold text-primary leading-none tracking-tight">
+                  {getFileExt(value)}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-text-primary">{describeFile(value)}</p>
+                {!readOnly && (
+                  <p className="text-xs text-[#006b3c] flex items-center gap-1 mt-0.5">
+                    <svg
+                      className="h-3.5 w-3.5 flex-shrink-0"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    Muvaffaqiyatli yuklandi
+                  </p>
+                )}
+              </div>
+              <div className="flex-shrink-0 flex flex-col items-end gap-1.5">
+                <a
+                  href={value}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary hover:underline"
+                >
+                  Ko'rish
+                </a>
+                {!readOnly && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => fileRef.current?.click()}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      O'zgartirish
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onChange(null)}
+                      className="text-xs text-text-muted hover:text-[#9b2c2c] transition-colors"
+                    >
+                      O'chirish
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
         </div>
       ) : (
         /* ── Empty dropzone ─────────────────────────────────────────────── */
         <div
-          onDrop={onDrop}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onClick={() => fileRef.current?.click()}
+          onDrop={disabled ? undefined : onDrop}
+          onDragOver={disabled ? undefined : onDragOver}
+          onDragLeave={disabled ? undefined : onDragLeave}
+          onClick={() => !disabled && fileRef.current?.click()}
           role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && fileRef.current?.click()}
+          tabIndex={disabled ? -1 : 0}
+          aria-disabled={disabled}
+          onKeyDown={(e) => !disabled && e.key === 'Enter' && fileRef.current?.click()}
           aria-label="Fayl yuklash maydoni"
           className={`
             flex flex-col items-center justify-center gap-3
-            ${fillHeight ? 'flex-1' : 'min-h-[240px]'} rounded-xl border-2 border-dashed cursor-pointer
+            ${
+              fillHeight ? 'flex-1' : 'min-h-[240px]'
+            } rounded-xl border-2 border-dashed
             transition-all duration-200 select-none
-            ${dragActive
-              ? 'border-primary bg-primary-muted/40'
-              : error
-              ? 'border-[#9b2c2c] bg-[#fff5f5]'
-              : 'border-border bg-bg-sunken hover:border-primary hover:bg-primary-muted/10'
+            ${
+              disabled
+                ? 'border-border bg-bg-sunken opacity-50 cursor-not-allowed'
+                : `cursor-pointer ${
+                    dragActive
+                      ? 'border-primary bg-primary-muted/40'
+                      : error
+                      ? 'border-[#9b2c2c] bg-[#fff5f5]'
+                      : 'border-border bg-bg-sunken hover:border-primary hover:bg-primary-muted/10'
+                  }`
             }
           `}
         >
           <svg
-            className={`h-8 w-8 ${dragActive ? 'text-primary' : 'text-text-muted'}`}
-            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}
+            className={`h-8 w-8 ${dragActive && !disabled ? 'text-primary' : 'text-text-muted'}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
             aria-hidden="true"
           >
-            <path strokeLinecap="round" strokeLinejoin="round"
-              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+            />
           </svg>
           <div className="text-center px-4">
             <p className="text-sm font-medium text-text-primary">
-              {dragActive ? 'Tashlang!' : 'Faylni tashlang yoki tanlang'}
+              {disabled
+                ? disabledHint ?? 'Avval kerakli maydonlarni tanlang'
+                : dragActive
+                ? 'Tashlang!'
+                : 'Faylni tashlang yoki tanlang'}
             </p>
-            <p className="text-xs text-text-muted mt-1">PDF · Word · PowerPoint · 100 MB gacha</p>
+            {!disabled && (
+              <p className="text-xs text-text-muted mt-1">
+                PDF · Word · PowerPoint · Excel · 100 MB gacha
+              </p>
+            )}
           </div>
         </div>
       )}
 
-      {uploadError && <p className="text-xs text-[#9b2c2c]" role="alert">{uploadError}</p>}
-      {error && !uploadError && <p className="text-xs text-[#9b2c2c]" role="alert">{error}</p>}
+      {uploadError && (
+        <p className="text-xs text-[#9b2c2c]" role="alert">
+          {uploadError}
+        </p>
+      )}
+      {error && !uploadError && (
+        <p className="text-xs text-[#9b2c2c]" role="alert">
+          {error}
+        </p>
+      )}
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -363,21 +483,23 @@ function CategorySelect({
   onChange,
   error,
 }: {
-  categories: { id: string; name: string; parentId: string | null }[];
-  value: string | null;
-  onChange: (v: string | null) => void;
-  error?: string;
+  categories: { id: string; name: string; parentId: string | null }[]
+  value: string | null
+  onChange: (v: string | null) => void
+  error?: string
 }) {
-  const roots = categories.filter((c) => !c.parentId);
-  const childrenOf = (id: string) => categories.filter((c) => c.parentId === id);
+  const roots = categories.filter((c) => !c.parentId)
+  const childrenOf = (id: string) => categories.filter((c) => c.parentId === id)
 
   function renderOptions(items: typeof categories, depth = 0): React.ReactNode[] {
     return items.flatMap((c) => [
       <option key={c.id} value={c.id}>
-        {'  '.repeat(depth)}{depth > 0 ? '— ' : ''}{c.name}
+        {'  '.repeat(depth)}
+        {depth > 0 ? '— ' : ''}
+        {c.name}
       </option>,
       ...renderOptions(childrenOf(c.id), depth + 1),
-    ]);
+    ])
   }
 
   return (
@@ -395,13 +517,25 @@ function CategorySelect({
           <option value="">Kategoriyani tanlang</option>
           {renderOptions(roots)}
         </select>
-        <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+        <svg
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path
+            fillRule="evenodd"
+            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+            clipRule="evenodd"
+          />
         </svg>
       </div>
-      {error && <p className="text-xs text-[#9b2c2c]" role="alert">{error}</p>}
+      {error && (
+        <p className="text-xs text-[#9b2c2c]" role="alert">
+          {error}
+        </p>
+      )}
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -413,9 +547,9 @@ function MaterialTypeSelect({
   onChange,
   error,
 }: {
-  value: MaterialType | null;
-  onChange: (v: MaterialType | null) => void;
-  error?: string;
+  value: MaterialType | null
+  onChange: (v: MaterialType | null) => void
+  error?: string
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -431,16 +565,30 @@ function MaterialTypeSelect({
         >
           <option value="">Material turini tanlang</option>
           {MATERIAL_TYPE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
           ))}
         </select>
-        <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+        <svg
+          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path
+            fillRule="evenodd"
+            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+            clipRule="evenodd"
+          />
         </svg>
       </div>
-      {error && <p className="text-xs text-[#9b2c2c]" role="alert">{error}</p>}
+      {error && (
+        <p className="text-xs text-[#9b2c2c]" role="alert">
+          {error}
+        </p>
+      )}
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -453,33 +601,33 @@ function TagInput({
   error,
   label,
 }: {
-  value: string[];
-  onChange: (v: string[]) => void;
-  error?: string;
-  label: string;
+  value: string[]
+  onChange: (v: string[]) => void
+  error?: string
+  label: string
 }) {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState('')
 
-  const MAX_TAGS = label === "Teglar (kalit so'zlar)" ? 6 : 999;
+  const MAX_TAGS = label === "Teglar (kalit so'zlar)" ? 6 : 999
 
   const addTag = (raw: string) => {
-    const tag = raw.trim();
+    const tag = raw.trim()
     if (tag && !value.includes(tag) && value.length < MAX_TAGS) {
-      onChange([...value, tag]);
+      onChange([...value, tag])
     }
-    setInput('');
-  };
+    setInput('')
+  }
 
-  const removeTag = (tag: string) => onChange(value.filter((t) => t !== tag));
+  const removeTag = (tag: string) => onChange(value.filter((t) => t !== tag))
 
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addTag(input);
+      e.preventDefault()
+      addTag(input)
     } else if (e.key === 'Backspace' && !input && value.length > 0) {
-      removeTag(value[value.length - 1]!);
+      removeTag(value[value.length - 1]!)
     }
-  };
+  }
 
   return (
     <div className="flex flex-col gap-1">
@@ -510,14 +658,20 @@ function TagInput({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKey}
-          onBlur={() => { if (input) addTag(input); }}
+          onBlur={() => {
+            if (input) addTag(input)
+          }}
           placeholder={value.length === 0 ? "Qo'shish uchun kiriting (Enter yoki vergul)" : ''}
           className="flex-1 min-w-[120px] bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
         />
       </div>
-      {error && <p className="text-xs text-[#9b2c2c]" role="alert">{error}</p>}
+      {error && (
+        <p className="text-xs text-[#9b2c2c]" role="alert">
+          {error}
+        </p>
+      )}
     </div>
-  );
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -525,17 +679,17 @@ function TagInput({
 // ---------------------------------------------------------------------------
 
 function abbreviateAuthor(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length < 2) return name;
+  const parts = name.trim().split(/\s+/)
+  if (parts.length < 2) return name
   // Already abbreviated if first word ends with "." (e.g. "A. Tilegenov", "X.A. Raxmonjonov")
-  if (parts[0]?.endsWith('.')) return name;
-  const [surname, ...given] = parts;
+  if (parts[0]?.endsWith('.')) return name
+  const [surname, ...given] = parts
   const initials = given
     .map((p) => p[0]?.toUpperCase())
     .filter(Boolean)
     .map((c) => c + '.')
-    .join(' ');
-  return `${initials} ${surname}`;
+    .join(' ')
+  return `${initials} ${surname}`
 }
 
 // ---------------------------------------------------------------------------
@@ -543,29 +697,30 @@ function abbreviateAuthor(name: string): string {
 // ---------------------------------------------------------------------------
 
 export function MaterialFormPage() {
-  const { id } = useParams<{ id?: string }>();
-  const isEdit = Boolean(id);
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { addToast } = useToastContext();
+  const { id } = useParams<{ id?: string }>()
+  const isEdit = Boolean(id)
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const { addToast } = useToastContext()
 
   const { data: material, isLoading: matLoading } = useQuery({
     queryKey: ['material', id],
     queryFn: () => getMaterial(id!),
     enabled: isEdit,
-    refetchInterval: (q) => q.state.data?.status === 'pending' ? 4000 : false,
-  });
-
+    refetchInterval: (q) => (q.state.data?.status === 'pending' ? 4000 : false),
+  })
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
     queryFn: getCategories,
-  });
+  })
 
   const {
     handleSubmit,
     control,
     reset,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(makeSchema(!isEdit)),
@@ -582,8 +737,39 @@ export function MaterialFormPage() {
       country: '',
       pageCount: null,
       status: 'pending',
+      selectedPages: null,
     },
-  });
+  })
+
+  const watchedMaterialType = watch('materialType')
+  const watchedCategoryId = watch('categoryId')
+  const watchedMediaUrl = watch('mediaUrl')
+  const canUpload = Boolean(watchedMaterialType) && Boolean(watchedCategoryId)
+
+  // ── Page-selection: after upload, require the admin to confirm which
+  // pages the AI should analyze before the material can be saved.
+  const [pagePrepOpen, setPagePrepOpen] = useState(false)
+  const [pagePrepConfirmedUrl, setPagePrepConfirmedUrl] = useState<string | null>(null)
+  const pagePrepPending =
+    !isEdit && !!watchedMediaUrl && watchedMediaUrl !== pagePrepConfirmedUrl
+
+  useEffect(() => {
+    if (!isEdit && watchedMediaUrl && watchedMediaUrl !== pagePrepConfirmedUrl) {
+      setPagePrepOpen(true)
+    }
+  }, [isEdit, watchedMediaUrl, pagePrepConfirmedUrl])
+
+  const handlePagePrepCancel = () => {
+    setPagePrepOpen(false)
+    setValue('mediaUrl', null)
+    setValue('selectedPages', null)
+  }
+
+  const handlePagePrepConfirm = (selectedPages: number[] | null) => {
+    setValue('selectedPages', selectedPages)
+    setPagePrepConfirmedUrl(watchedMediaUrl)
+    setPagePrepOpen(false)
+  }
 
   useEffect(() => {
     if (material) {
@@ -600,64 +786,83 @@ export function MaterialFormPage() {
         country: material.country ?? '',
         pageCount: material.pageCount ?? null,
         status: material.status,
-      });
+        selectedPages: null,
+      })
     }
-  }, [material, reset]);
+  }, [material, reset])
 
-  const [processingId, setProcessingId] = useState<string | null>(null);
-  const [processingDisplayed, setProcessingDisplayed] = useState<number | undefined>(undefined);
-  const processingAnimRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null)
+  const [processingDisplayed, setProcessingDisplayed] = useState<number | undefined>(undefined)
+  const processingAnimRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const { data: processingMaterial } = useQuery({
     queryKey: ['material', processingId],
     queryFn: () => getMaterial(processingId!),
     enabled: !!processingId,
-    refetchInterval: (q) => q.state.data?.status === 'pending' ? 3000 : false,
-  });
+    refetchInterval: (q) => (q.state.data?.status === 'pending' ? 3000 : false),
+  })
 
   const { data: processingProgress } = useQuery({
     queryKey: ['material-progress', processingId],
     queryFn: () => getMaterialProgress(processingId!),
     enabled: !!processingId && processingMaterial?.status === 'pending',
     refetchInterval: 2000,
-  });
+  })
 
   useEffect(() => {
-    const target = processingProgress?.progress;
-    if (target === undefined) return;
+    const target = processingProgress?.progress
+    if (target === undefined) return
     if (processingDisplayed === undefined) {
-      setProcessingDisplayed(target);
-      return;
+      setProcessingDisplayed(target)
+      return
     }
     if (target <= processingDisplayed) {
-      setProcessingDisplayed(target);
-      return;
+      setProcessingDisplayed(target)
+      return
     }
-    if (processingAnimRef.current) clearInterval(processingAnimRef.current);
-    const diff = target - processingDisplayed;
-    const stepMs = Math.max(20, 1500 / diff);
-    let cur = processingDisplayed;
+    if (processingAnimRef.current) clearInterval(processingAnimRef.current)
+    const diff = target - processingDisplayed
+    const stepMs = Math.max(20, 1500 / diff)
+    let cur = processingDisplayed
     processingAnimRef.current = setInterval(() => {
-      cur += 1;
-      setProcessingDisplayed(cur);
+      cur += 1
+      setProcessingDisplayed(cur)
       if (cur >= target) {
-        if (processingAnimRef.current) clearInterval(processingAnimRef.current);
-        processingAnimRef.current = null;
+        if (processingAnimRef.current) clearInterval(processingAnimRef.current)
+        processingAnimRef.current = null
       }
-    }, stepMs);
+    }, stepMs)
     return () => {
       if (processingAnimRef.current) {
-        clearInterval(processingAnimRef.current);
-        processingAnimRef.current = null;
+        clearInterval(processingAnimRef.current)
+        processingAnimRef.current = null
       }
-    };
-  }, [processingProgress?.progress]); // eslint-disable-line react-hooks/exhaustive-deps
+    }
+  }, [processingProgress?.progress]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (processingMaterial && processingMaterial.status !== 'pending') {
-      navigate(`/materials/${processingMaterial.id}/edit`);
+      // Fresh-create flow: we're still on /materials/new, so navigate to the
+      // edit URL. Direct-navigation flow: we're already there — navigating to
+      // the same URL again would be a no-op, so just clear processingId to
+      // let the overlay give way to the now-populated edit form below.
+      if (!isEdit) {
+        navigate(`/materials/${processingMaterial.id}/edit`, { replace: true })
+      }
+      setProcessingId(null)
     }
-  }, [processingMaterial?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [processingMaterial?.status]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Seed processingId from the route id when navigating directly to a
+  // still-analyzing material's edit page, so it reuses the same
+  // polling/animation machinery as the fresh-create flow above.
+  useEffect(() => {
+    if (isEdit && material?.status === 'pending' && !processingId) {
+      setProcessingId(material.id)
+    }
+  }, [isEdit, material?.status, material?.id, processingId])
+
+  const showAnalyzingOverlay = Boolean(processingId) || (isEdit && material?.status === 'pending')
 
   const createMutation = useMutation({
     mutationFn: (values: FormValues) =>
@@ -665,16 +870,17 @@ export function MaterialFormPage() {
         mediaUrl: values.mediaUrl,
         materialType: values.materialType,
         categoryId: values.categoryId,
+        selectedPages: values.selectedPages ?? undefined,
       }),
     onSuccess: (newMaterial) => {
-      void queryClient.invalidateQueries({ queryKey: ['materials'] });
-      addToast('Material muvaffaqiyatli yaratildi', 'success');
-      setProcessingId(newMaterial.id);
+      void queryClient.invalidateQueries({ queryKey: ['materials'] })
+      addToast('Material muvaffaqiyatli yaratildi', 'success')
+      setProcessingId(newMaterial.id)
     },
     onError: () => {
-      addToast('Saqlashda xatolik yuz berdi', 'error');
+      addToast('Saqlashda xatolik yuz berdi', 'error')
     },
-  });
+  })
 
   const updateMutation = useMutation({
     mutationFn: (values: FormValues) =>
@@ -693,26 +899,26 @@ export function MaterialFormPage() {
         status: values.status,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['materials'] });
-      void queryClient.invalidateQueries({ queryKey: ['material', id] });
-      addToast('Material muvaffaqiyatli saqlandi', 'success');
-      navigate('/materials');
+      void queryClient.invalidateQueries({ queryKey: ['materials'] })
+      void queryClient.invalidateQueries({ queryKey: ['material', id] })
+      addToast('Material muvaffaqiyatli saqlandi', 'success')
+      navigate('/materials')
     },
     onError: () => {
-      addToast('Saqlashda xatolik yuz berdi', 'error');
+      addToast('Saqlashda xatolik yuz berdi', 'error')
     },
-  });
+  })
 
   const onSubmit = async (values: FormValues) => {
     if (isEdit) {
-      await updateMutation.mutateAsync(values);
+      await updateMutation.mutateAsync(values)
     } else {
-      await createMutation.mutateAsync(values);
+      if (pagePrepPending) return
+      await createMutation.mutateAsync(values)
     }
-  };
+  }
 
-  const pageTitle = isEdit ? 'Materialni tahrirlash' : 'Yangi material';
-  const isPending = material?.status === 'pending';
+  const pageTitle = isEdit ? 'Materialni tahrirlash' : 'Yangi material'
 
   if (isEdit && matLoading) {
     return (
@@ -721,23 +927,40 @@ export function MaterialFormPage() {
           <div className="animate-spin h-8 w-8 rounded-full border-2 border-accent border-t-transparent" />
         </div>
       </Layout>
-    );
+    )
   }
 
-  const isBusy = isSubmitting || createMutation.isPending || updateMutation.isPending;
+  const isBusy = isSubmitting || createMutation.isPending || updateMutation.isPending
 
   return (
     <Layout
       title={pageTitle}
       actions={
-        processingId ? undefined : isEdit ? (
+        showAnalyzingOverlay ? undefined : isEdit ? (
           <Button variant="secondary" size="sm" onClick={() => navigate('/materials')}>
             Bekor qilish
           </Button>
         ) : (
-          <Button size="sm" loading={isBusy} onClick={() => { void handleSubmit(onSubmit)(); }}>
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 -ml-0.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+          <Button
+            size="sm"
+            loading={isBusy}
+            disabled={pagePrepPending}
+            onClick={() => {
+              void handleSubmit(onSubmit)()
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4 mr-1.5 -ml-0.5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fillRule="evenodd"
+                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                clipRule="evenodd"
+              />
             </svg>
             Saqlash
           </Button>
@@ -746,16 +969,24 @@ export function MaterialFormPage() {
     >
       <form
         id="material-form"
-        onSubmit={(e) => { void handleSubmit(onSubmit)(e); }}
+        onSubmit={(e) => {
+          void handleSubmit(onSubmit)(e)
+        }}
         noValidate
         className="w-full flex-1 flex flex-col"
       >
-        {isEdit ? (
+        {showAnalyzingOverlay ? (
+          // ----------------------------------------------------------------
+          // PROCESSING STATE — AI is analysing the material (fresh create OR
+          // navigating directly to a still-pending material's edit page)
+          // ----------------------------------------------------------------
+          <MaterialAnalyzingOverlay progress={processingDisplayed} />
+        ) : isEdit ? (
           // ----------------------------------------------------------------
           // EDIT MODE — full form
           // ----------------------------------------------------------------
           <div className="grid grid-cols-[70fr_30fr] gap-6 items-start">
-          <div className="space-y-5">
+            <div className="space-y-5">
               {/* Media */}
               <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-6">
                 <Controller
@@ -783,14 +1014,11 @@ export function MaterialFormPage() {
                   control={control}
                   render={({ field }) => (
                     <div className="flex flex-col gap-1">
-                      <label className="text-sm font-medium text-text-primary">
-                        Sarlavha
-                      </label>
+                      <label className="text-sm font-medium text-text-primary">Sarlavha</label>
                       <input
                         {...field}
                         value={field.value ?? ''}
-                        placeholder={isPending ? 'AI aniqlamoqda...' : 'Sarlavha'}
-                        disabled={isPending}
+                        placeholder="Sarlavha"
                         className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
                       />
                     </div>
@@ -802,21 +1030,17 @@ export function MaterialFormPage() {
                   control={control}
                   render={({ field }) => (
                     <div className="flex flex-col gap-1">
-                      <label className="text-sm font-medium text-text-primary">
-                        Qisqa ta'rif
-                      </label>
+                      <label className="text-sm font-medium text-text-primary">Qisqa ta'rif</label>
                       <textarea
                         {...field}
                         value={field.value ?? ''}
-                        placeholder={isPending ? 'AI aniqlamoqda...' : 'Materialning qisqa marketing tavsifi'}
-                        disabled={isPending}
+                        placeholder="Materialning qisqa marketing tavsifi"
                         rows={3}
                         className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all resize-y disabled:bg-bg-sunken disabled:opacity-60"
                       />
                     </div>
                   )}
                 />
-
               </div>
 
               {/* Bibliografik ma'lumotlar */}
@@ -857,23 +1081,35 @@ export function MaterialFormPage() {
                     control={control}
                     render={({ field }) => (
                       <div className="flex flex-col gap-1">
-                        <label className="text-sm font-medium text-text-primary">
-                          Nashr yili
-                        </label>
+                        <label className="text-sm font-medium text-text-primary">Nashr yili</label>
                         <div className="relative">
                           <select
                             value={field.value ?? ''}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : null)}
-                            disabled={isPending}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? parseInt(e.target.value, 10) : null)
+                            }
                             className="w-full appearance-none bg-bg-elevated border-2 border-border rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
                           >
                             <option value="">— Tanlang —</option>
-                            {Array.from({ length: CURRENT_YEAR - 1899 }, (_, i) => CURRENT_YEAR - i).map((y) => (
-                              <option key={y} value={y}>{y}</option>
+                            {Array.from(
+                              { length: CURRENT_YEAR - 1899 },
+                              (_, i) => CURRENT_YEAR - i,
+                            ).map((y) => (
+                              <option key={y} value={y}>
+                                {y}
+                              </option>
                             ))}
                           </select>
-                          <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                          <svg
+                            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                              clipRule="evenodd"
+                            />
                           </svg>
                         </div>
                         {errors.publishYear && (
@@ -888,22 +1124,22 @@ export function MaterialFormPage() {
                     control={control}
                     render={({ field }) => (
                       <div className="flex flex-col gap-1">
-                        <label className="text-sm font-medium text-text-primary">
-                          Sahifa soni
-                        </label>
+                        <label className="text-sm font-medium text-text-primary">Sahifa soni</label>
                         <input
                           type="text"
                           inputMode="numeric"
                           value={field.value ?? ''}
                           onChange={(e) => {
-                            const v = e.target.value;
-                            if (v === '') { field.onChange(null); return; }
-                            if (!/^\d+$/.test(v)) return;
-                            const n = parseInt(v, 10);
-                            if (n >= 1) field.onChange(n);
+                            const v = e.target.value
+                            if (v === '') {
+                              field.onChange(null)
+                              return
+                            }
+                            if (!/^\d+$/.test(v)) return
+                            const n = parseInt(v, 10)
+                            if (n >= 1) field.onChange(n)
                           }}
-                          placeholder={isPending ? 'AI...' : '256'}
-                          disabled={isPending}
+                          placeholder="256"
                           className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
                         />
                         {errors.pageCount && (
@@ -918,21 +1154,30 @@ export function MaterialFormPage() {
                     control={control}
                     render={({ field }) => (
                       <div className="flex flex-col gap-1">
-                        <label className="text-sm font-medium text-text-primary">
-                          Til
-                        </label>
+                        <label className="text-sm font-medium text-text-primary">Til</label>
                         <div className="relative">
                           <select
                             value={field.value ?? ''}
                             onChange={(e) => field.onChange(e.target.value || null)}
-                            disabled={isPending}
                             className="w-full appearance-none bg-bg-elevated border-2 border-border rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
                           >
                             <option value="">— Tanlang —</option>
-                            {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+                            {LANGUAGES.map((l) => (
+                              <option key={l} value={l}>
+                                {l}
+                              </option>
+                            ))}
                           </select>
-                          <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                          <svg
+                            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                              clipRule="evenodd"
+                            />
                           </svg>
                         </div>
                       </div>
@@ -944,21 +1189,30 @@ export function MaterialFormPage() {
                     control={control}
                     render={({ field }) => (
                       <div className="flex flex-col gap-1">
-                        <label className="text-sm font-medium text-text-primary">
-                          Davlat
-                        </label>
+                        <label className="text-sm font-medium text-text-primary">Davlat</label>
                         <div className="relative">
                           <select
                             value={field.value ?? ''}
                             onChange={(e) => field.onChange(e.target.value || null)}
-                            disabled={isPending}
                             className="w-full appearance-none bg-bg-elevated border-2 border-border rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
                           >
                             <option value="">— Tanlang —</option>
-                            {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                            {COUNTRIES.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
                           </select>
-                          <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                          <svg
+                            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                              clipRule="evenodd"
+                            />
                           </svg>
                         </div>
                       </div>
@@ -1012,53 +1266,17 @@ export function MaterialFormPage() {
               </div>
             </div>
 
-          {/* Right column — muqova rasmi */}
-          <div className="sticky top-0">
-            {material?.coverUrl ? (
-              <img
-                src={material.coverUrl}
-                alt="Muqova"
-                className="w-full rounded-lg object-cover shadow-card"
-              />
-            ) : (
-              <div className="bg-bg-elevated rounded-lg border border-dashed border-border flex items-center justify-center min-h-[200px]">
-                <p className="text-sm text-text-muted">
-                  {isPending ? 'Muqova generatsiya qilinmoqda...' : 'Muqova mavjud emas'}
-                </p>
-              </div>
-            )}
-          </div>
-
-          </div>
-        ) : processingId ? (
-          // ----------------------------------------------------------------
-          // PROCESSING STATE — AI is analysing the uploaded material
-          // ----------------------------------------------------------------
-          <div className="max-w-[560px]">
-            <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-10 flex flex-col items-center text-center gap-6">
-              <div className="animate-spin h-10 w-10 rounded-full border-2 border-primary border-t-transparent flex-shrink-0" />
-              <div>
-                <h3 className="text-base font-semibold text-text-primary">Material tahlil qilinmoqda</h3>
-                <p className="text-sm text-text-muted mt-1.5 leading-relaxed">
-                  AI sarlavha, mualliflar, teglar va boshqa ma'lumotlarni aniqlamoqda...
-                </p>
-              </div>
-              {processingDisplayed !== undefined && (
-                <div className="w-full space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-text-muted">Tahlil</span>
-                    <span className="font-semibold text-primary tabular-nums">{processingDisplayed}%</span>
-                  </div>
-                  <div className="w-full bg-bg-sunken rounded-full h-2">
-                    <div
-                      className="bg-primary h-full rounded-full transition-all duration-300"
-                      style={{ width: `${processingDisplayed}%` }}
-                      role="progressbar"
-                      aria-valuenow={processingDisplayed}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                    />
-                  </div>
+            {/* Right column — muqova rasmi */}
+            <div className="sticky top-0">
+              {material?.coverUrl ? (
+                <img
+                  src={material.coverUrl}
+                  alt="Muqova"
+                  className="w-full rounded-lg object-cover shadow-card"
+                />
+              ) : (
+                <div className="bg-bg-elevated rounded-lg border border-dashed border-border flex items-center justify-center min-h-[200px]">
+                  <p className="text-sm text-text-muted">Muqova mavjud emas</p>
                 </div>
               )}
             </div>
@@ -1081,6 +1299,8 @@ export function MaterialFormPage() {
                       error={errors.mediaUrl?.message}
                       fillHeight
                       readOnly={isEdit}
+                      disabled={!isEdit && !canUpload}
+                      disabledHint="Fayl yuklashdan oldin Material turi va Kategoriyani tanlang"
                     />
                   )}
                 />
@@ -1114,10 +1334,18 @@ export function MaterialFormPage() {
                 />
               </div>
             </div>
-
           </div>
         )}
       </form>
+
+      {!isEdit && (
+        <PageSelectionModal
+          open={pagePrepOpen}
+          mediaUrl={watchedMediaUrl}
+          onCancel={handlePagePrepCancel}
+          onConfirm={handlePagePrepConfirm}
+        />
+      )}
     </Layout>
-  );
+  )
 }

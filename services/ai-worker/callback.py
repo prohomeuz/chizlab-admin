@@ -65,19 +65,38 @@ async def post_failure(material_id: str, error_message: str) -> None:
     await _send(payload)
 
 
-async def _send(payload: dict[str, Any]) -> None:
+async def post_page_prep_result(
+    job_id: str,
+    success: bool,
+    page_count: int | None = None,
+    thumbnail_urls: list[str] | None = None,
+    error: str | None = None,
+) -> None:
+    """Notify the NestJS API that page-thumbnail preparation finished (or failed)."""
+    payload: dict[str, Any] = {
+        "jobId": job_id,
+        "success": success,
+        "pageCount": page_count,
+        "thumbnailUrls": thumbnail_urls,
+        "error": error,
+    }
+    await _send(payload, url=get_settings().internal_page_prep_callback_url)
+
+
+async def _send(payload: dict[str, Any], url: str | None = None) -> None:
     """Send the callback payload to the internal NestJS endpoint."""
     settings = get_settings()
-    url = settings.internal_callback_url
+    url = url or settings.internal_callback_url
     headers = {
         "Content-Type": "application/json",
         "X-Internal-Secret": settings.internal_callback_secret,
     }
 
     logger.info(
-        "Posting AI result to %s (materialId=%s, success=%s)",
+        "Posting result to %s (materialId=%s, jobId=%s, success=%s)",
         url,
         payload.get("materialId"),
+        payload.get("jobId"),
         payload.get("success"),
     )
 
