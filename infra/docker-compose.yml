@@ -29,7 +29,7 @@ services:
     networks:
       - app_network
     ports:
-      - "5435:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -53,8 +53,6 @@ services:
     command: redis-server --appendonly yes
     networks:
       - app_network
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -76,8 +74,8 @@ services:
     networks:
       - app_network
     ports:
-      - "9100:9000"   # S3 API
-      - "9101:9001"   # MinIO web console
+      - "127.0.0.1:9100:9000"   # S3 API
+      - "127.0.0.1:9101:9001"   # MinIO web console
     volumes:
       - minio_data:/data
     command: server /data --console-address :9001
