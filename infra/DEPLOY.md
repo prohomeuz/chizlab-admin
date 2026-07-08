@@ -110,6 +110,57 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d admin.chizlab.uz
 ```
 
+### `api.chizlab.uz` (public read-only API, separate subdomain)
+
+The external platform consumes `/api/public/*` on its own subdomain, not under
+`admin.chizlab.uz`. This vhost proxies **only** the public API and its Swagger
+docs to the same backend (`127.0.0.1:8005`) — `/api/admin/*` and
+`/internal/*` are intentionally not reachable here, even though they're
+already JWT/secret-guarded, as defense in depth.
+
+```nginx
+server {
+    listen 80;
+    server_name api.chizlab.uz;
+
+    location /api/public/ {
+        proxy_pass http://127.0.0.1:8005;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Swagger UI for the public API, mounted at the bare /docs path
+    # (apps/api/src/main.ts mounts the same public document at both
+    # /docs/public and /docs — no path rewrite needed here).
+    location /docs {
+        proxy_pass http://127.0.0.1:8005;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        return 404;
+    }
+}
+```
+
+Enable the site and issue a TLS certificate:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/api.chizlab.uz /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d api.chizlab.uz
+```
+
+This requires a DNS `A` record for `api.chizlab.uz` pointing at the same
+server as `admin.chizlab.uz`.
+
 ---
 
 ## 5. GitHub Secrets (for automated deploy)
