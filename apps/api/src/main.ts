@@ -96,6 +96,10 @@ async function bootstrap(): Promise<void> {
   const publicTags = new Set(['public-materials', 'public-categories']);
   filterDocumentByTags(publicDocument, publicTags);
   SwaggerModule.setup('docs/public', app, publicDocument);
+  // Also mounted at the bare `/docs` path so the dedicated api.chizlab.uz
+  // subdomain (which proxies only /api/public/* and /docs) can serve Swagger
+  // without any nginx path rewriting.
+  SwaggerModule.setup('docs', app, publicDocument);
 
   // ── Listen ────────────────────────────────────────────────────────────────
   // Admin PIN seeding is handled by AuthService.onApplicationBootstrap()

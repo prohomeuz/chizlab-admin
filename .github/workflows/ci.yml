@@ -24,24 +24,22 @@ jobs:
       - name: Build AI worker image
         run: docker build -t chizlab-ai-worker:ci services/ai-worker/
 
-  # ── Deploy to VPS (uncomment when ready) ──────────────────────────────────
+  # ── Deploy to VPS ──────────────────────────────────────────────────────────
   # Requires repository secrets: VPS_HOST, VPS_USER, VPS_SSH_KEY
-  #
-  # deploy:
-  #   name: Deploy to VPS
-  #   needs: docker-build
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  #   runs-on: ubuntu-latest
-  #   environment: production
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Deploy via SSH
-  #       uses: appleboy/ssh-action@v1.0.3
-  #       with:
-  #         host: ${{ secrets.VPS_HOST }}
-  #         username: ${{ secrets.VPS_USER }}
-  #         key: ${{ secrets.VPS_SSH_KEY }}
-  #         script: |
-  #           cd /opt/chizlab-admin
-  #           git pull origin main
-  #           cd infra && docker compose pull && docker compose up -d --build
+  deploy:
+    name: Deploy to VPS
+    needs: docker-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/chizlab-admin
+            git pull origin main
+            docker compose -f infra/docker-compose.yml up -d --build
