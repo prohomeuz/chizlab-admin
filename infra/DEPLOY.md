@@ -32,9 +32,10 @@ At minimum, change the following before going live:
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | generate with `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
 | `ADMIN_PIN` | change from default `12345678` |
 | `MINIO_SECRET_KEY` | change from default `minioadmin123` |
-| `PUBLIC_API_KEY` / `INTERNAL_CALLBACK_SECRET` | generate random hex values |
+| `INTERNAL_CALLBACK_SECRET` | generate a random hex value |
 | `GEMINI_API_KEY` | required — AI worker will not start without it |
 | `CORS_ORIGINS` | set to `https://admin.chizlab.uz` |
+| `PUBLIC_ALLOWED_ORIGINS` | hostnames allowed to call `/api/public/*` (defaults to `chizlab.uz,www.chizlab.uz,api.chizlab.uz`) |
 | `MINIO_PUBLIC_URL` | set to `https://admin.chizlab.uz/media/chizlab-media` |
 | `API_PORT` | set to `8005` (this server's reserved port) |
 | `ADMIN_PORT` | set to `3005` (this server's reserved port) |

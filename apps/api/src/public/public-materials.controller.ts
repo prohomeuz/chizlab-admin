@@ -9,16 +9,14 @@ import {
 import {
   ApiOperation,
   ApiResponse,
-  ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger';
 import { MaterialsService } from '../materials/materials.service';
-import { ApiKeyGuard } from './api-key.guard';
+import { OriginGuard } from './origin.guard';
 import { PublicListMaterialsDto } from './dto/public-list.dto';
 
 @ApiTags('public-materials')
-@ApiSecurity('ApiKeyAuth')
-@UseGuards(ApiKeyGuard)
+@UseGuards(OriginGuard)
 @Controller('api/public/materials')
 export class PublicMaterialsController {
   constructor(private readonly materialsService: MaterialsService) {}

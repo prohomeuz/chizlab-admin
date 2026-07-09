@@ -8,21 +8,29 @@ import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import type { AppConfig } from '../config/config';
 
+function hostnameOf(value: string): string | null {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 @Injectable()
-export class ApiKeyGuard implements CanActivate {
+export class OriginGuard implements CanActivate {
   constructor(private readonly configService: ConfigService) {}
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
     const cfg = this.configService.get<AppConfig>('app');
-    const expectedKey = cfg?.publicApiKey;
+    const allowedHosts = cfg?.publicAllowedOrigins ?? [];
 
-    if (!expectedKey) {
-      throw new UnauthorizedException('PUBLIC_API_KEY is not configured');
-    }
+    const originHeader = request.headers.origin;
+    const refererHeader = request.headers.referer;
+    const source = typeof originHeader === 'string' ? originHeader : refererHeader;
 
-    const apiKey = request.headers['x-api-key'];
-    if (typeof apiKey !== 'string' || apiKey !== expectedKey) {
+    const hostname = typeof source === 'string' ? hostnameOf(source) : null;
+    if (!hostname || !allowedHosts.includes(hostname)) {
       throw new UnauthorizedException('Unauthorized');
     }
 
