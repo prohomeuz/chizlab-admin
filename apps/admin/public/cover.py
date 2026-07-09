@@ -61,22 +61,53 @@ def muqova_yarat(avtor: str, kitob_nomi: str, joy_yil: str, chiqish_fayl: str):
         jy_bbox = draw.textbbox((0, 0), joy_yil, font=font_kichik)
         joy_yil_w = jy_bbox[2] - jy_bbox[0]
 
-    # Avtor - yuqori chap (joy_yil bilan overlap bo'lmasligi uchun kenglik cheklanadi)
+    # Sarlavha joylashuvi avval hisoblanadi - avtor bloki shu chiziqdan
+    # oshib ketmasligi (sarlavha bilan qoplanib qolmasligi) uchun kerak.
+    x_sarlavha = int(20 * sx)
+    y_sarlavha = int(112 * sy)
+    max_kenglik = int((357 - 20) * sx)
+    satr_balandligi = int(48 * sy)
+
+    # Avtor - yuqori chap, bir nechta satrga bo'linadi (bitta satrga siqib,
+    # kesib tashlash o'rniga) - shunda ko'p muallif bo'lganda matn joy_yil
+    # yoki sarlavha bilan bir-birining ustiga chiqib ketmaydi.
+    x_left = int(20 * sx)
+    y_avtor = int(21 * sy)
     if avtor:
-        x_left = int(20 * sx)
-        y_avtor = int(21 * sy)
-        # Max avtor kengligi: joy_yil dan 16px chapda
-        max_avtor_w = int(357 * sx) - joy_yil_w - int(30 * sx)
-        avtor_text = avtor
-        while avtor_text:
-            bbox = draw.textbbox((0, 0), avtor_text, font=font_kichik)
-            if bbox[2] - bbox[0] <= max_avtor_w:
-                break
-            avtor_text = avtor_text[:-1]
-            if avtor_text.endswith(' ') or avtor_text.endswith(','):
-                avtor_text = avtor_text[:-1] + '...'
-                break
-        draw.text((x_left, y_avtor), avtor_text, font=font_kichik, fill=(255, 255, 255))
+        birinchi_satr_w = max(int(357 * sx) - joy_yil_w - int(30 * sx), int(60 * sx))
+        qolgan_satr_w = max_kenglik
+        satr_balandligi_avtor = max(int(font_kichik.size * 1.3), 1)
+        mavjud_balandlik = y_sarlavha - y_avtor - int(6 * sy)
+        max_satrlar = max(1, mavjud_balandlik // satr_balandligi_avtor)
+
+        avtor_satrlar = []
+        joriy = ""
+        for soz in avtor.split():
+            kenglik_chegara = birinchi_satr_w if not avtor_satrlar else qolgan_satr_w
+            sinov = (joriy + " " + soz).strip()
+            bbox = draw.textbbox((0, 0), sinov, font=font_kichik)
+            if bbox[2] - bbox[0] <= kenglik_chegara:
+                joriy = sinov
+            else:
+                if joriy:
+                    avtor_satrlar.append(joriy)
+                joriy = soz
+        if joriy:
+            avtor_satrlar.append(joriy)
+
+        if len(avtor_satrlar) > max_satrlar:
+            avtor_satrlar = avtor_satrlar[:max_satrlar]
+            kenglik_chegara = birinchi_satr_w if max_satrlar == 1 else qolgan_satr_w
+            oxirgi = avtor_satrlar[-1]
+            while oxirgi:
+                bbox = draw.textbbox((0, 0), oxirgi + "...", font=font_kichik)
+                if bbox[2] - bbox[0] <= kenglik_chegara:
+                    break
+                oxirgi = oxirgi[:-1]
+            avtor_satrlar[-1] = (oxirgi.rstrip(", ") + "...") if oxirgi else "..."
+
+        for i, satr in enumerate(avtor_satrlar):
+            draw.text((x_left, y_avtor + i * satr_balandligi_avtor), satr, font=font_kichik, fill=(255, 255, 255))
 
     # Joy/Yil - yuqori o'ng (logodan chapda, o'ngga tekislangan)
     if joy_yil:
@@ -85,11 +116,6 @@ def muqova_yarat(avtor: str, kitob_nomi: str, joy_yil: str, chiqish_fayl: str):
         draw.text((x_joy_yil, y_joy_yil), joy_yil, font=font_kichik, fill=(255, 255, 255))
 
     # Kitob nomi - katta sarlavha, wordwrap bilan
-    x_sarlavha = int(20 * sx)
-    y_sarlavha = int(112 * sy)
-    max_kenglik = int((357 - 20) * sx)
-    satr_balandligi = int(48 * sy)
-
     satrlar = _matn_qator(draw, kitob_nomi, font_sarlavha, max_kenglik)
     for i, satr in enumerate(satrlar):
         draw.text((x_sarlavha, y_sarlavha + i * satr_balandligi), satr, font=font_sarlavha, fill=(255, 255, 255))

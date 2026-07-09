@@ -41,6 +41,50 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFon
     return lines or [""]
 
 
+def _wrap_authors(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    first_line_width: int,
+    rest_width: int,
+    max_lines: int,
+) -> list[str]:
+    """
+    Word-wrap author text across multiple lines. The first line is narrower
+    (it shares its row with the country/year text); later lines use the full
+    width. If the text still doesn't fit within max_lines, the last line is
+    truncated with an ellipsis instead of letting it collide with the title.
+    """
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        width_limit = first_line_width if not lines else rest_width
+        test = (current + " " + word).strip()
+        bbox = draw.textbbox((0, 0), test, font=font)
+        if bbox[2] - bbox[0] <= width_limit:
+            current = test
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        width_limit = first_line_width if max_lines == 1 else rest_width
+        last = lines[-1]
+        while last:
+            bbox = draw.textbbox((0, 0), last + "...", font=font)
+            if bbox[2] - bbox[0] <= width_limit:
+                break
+            last = last[:-1]
+        lines[-1] = (last.rstrip(", ") + "...") if last else "..."
+
+    return lines or [""]
+
+
 def generate_cover(
     title: str,
     authors: list[str],
@@ -75,29 +119,33 @@ def generate_cover(
         jy_bbox = draw.textbbox((0, 0), joy_yil, font=font_small)
         joy_yil_w = jy_bbox[2] - jy_bbox[0]
 
-    # Authors — top-left, truncated to avoid overlap with country/year
-    avtor_text = ", ".join(authors) if authors else ""
-    if avtor_text:
-        max_avtor_w = int(357 * sx) - joy_yil_w - int(30 * sx)
-        while avtor_text:
-            bbox = draw.textbbox((0, 0), avtor_text, font=font_small)
-            if bbox[2] - bbox[0] <= max_avtor_w:
-                break
-            avtor_text = avtor_text[:-1]
-            if avtor_text.endswith((' ', ',')):
-                avtor_text = avtor_text[:-1] + '...'
-                break
-        draw.text((int(20 * sx), int(21 * sy)), avtor_text, font=font_small, fill=(255, 255, 255))
-
-    # Country + Year — top-right (right-aligned, before logo area)
-    if joy_yil:
-        draw.text((int(357 * sx) - joy_yil_w, int(21 * sy)), joy_yil, font=font_small, fill=(255, 255, 255))
-
-    # Title — large, with word-wrap
+    # Title position — computed up front so the author block knows how much
+    # vertical space it has available before it would collide with the title.
     x_title = int(20 * sx)
     y_title = int(112 * sy)
     max_w = int((357 - 20) * sx)
     line_h = int(48 * sy)
+
+    # Authors — top-left, wrapped across multiple lines (not squeezed onto
+    # one line) so long author lists don't overlap the title or run off-cover.
+    avtor_text = ", ".join(authors) if authors else ""
+    y_authors = int(21 * sy)
+    if avtor_text:
+        first_line_w = max(int(357 * sx) - joy_yil_w - int(30 * sx), int(60 * sx))
+        rest_line_w = max_w
+        line_h_authors = max(int(font_small.size * 1.3), 1)
+        available_h = y_title - y_authors - int(6 * sy)
+        max_lines = max(1, available_h // line_h_authors)
+
+        author_lines = _wrap_authors(draw, avtor_text, font_small, first_line_w, rest_line_w, max_lines)
+        for i, line in enumerate(author_lines):
+            draw.text((int(20 * sx), y_authors + i * line_h_authors), line, font=font_small, fill=(255, 255, 255))
+
+    # Country + Year — top-right (right-aligned, before logo area)
+    if joy_yil:
+        draw.text((int(357 * sx) - joy_yil_w, y_authors), joy_yil, font=font_small, fill=(255, 255, 255))
+
+    # Title — large, with word-wrap
 
     lines = _wrap_text(draw, title, font_title, max_w)
     for i, line in enumerate(lines):
