@@ -8,7 +8,7 @@ info:
 
     **Two route groups:**
     - `/api/admin/*` — full CRUD, JWT-protected. Documented here under the `admin` tag.
-    - `/api/public/*` — GET-only, protected by `X-API-Key`. Documented here under the `public` tag.
+    - `/api/public/*` — GET-only, restricted to requests originating from an allowed origin (see `PUBLIC_ALLOWED_ORIGINS`). Documented here under the `public` tag.
 
     **Internal callback** (`/internal/ai-result`) is documented for developer reference only.
     It is never publicly routed.
@@ -31,12 +31,6 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Short-lived JWT access token returned by POST /api/admin/auth/login
-
-    ApiKeyAuth:
-      type: apiKey
-      in: header
-      name: X-API-Key
-      description: Public API key. Validated against PUBLIC_API_KEY env var.
 
     InternalSecret:
       type: apiKey
@@ -1079,8 +1073,6 @@ paths:
         Supports pagination, category filter, tag filter, and full-text search.
         Does NOT expose `deletedAt` field in response objects.
       operationId: publicListMaterials
-      security:
-        - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/LimitParam'
         - $ref: '#/components/parameters/OffsetParam'
@@ -1108,8 +1100,6 @@ paths:
         Returns a single material only if `status=ready AND deletedAt IS NULL`.
         Returns 404 for any other state (draft, pending, deleted, etc.).
       operationId: publicGetMaterial
-      security:
-        - ApiKeyAuth: []
       parameters:
         - $ref: '#/components/parameters/MaterialIdPath'
       responses:
@@ -1139,8 +1129,6 @@ paths:
       summary: List all categories (public)
       description: Returns all non-deleted categories as a flat list. Clients reconstruct the tree via `parentId`.
       operationId: publicListCategories
-      security:
-        - ApiKeyAuth: []
       responses:
         '200':
           description: Flat list of categories.

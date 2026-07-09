@@ -50,7 +50,7 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: allowedOrigins.length > 0 ? allowedOrigins : false,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
 
@@ -82,9 +82,8 @@ async function bootstrap(): Promise<void> {
   // ── Swagger: Public docs ─────────────────────────────────────────────────
   const publicDocConfig = new DocumentBuilder()
     .setTitle('Chizlab Public API')
-    .setDescription('Read-only public API — X-API-Key protected.')
+    .setDescription('Read-only public API — restricted to requests originating from chizlab.uz.')
     .setVersion('1.0')
-    .addApiKey({ type: 'apiKey', in: 'header', name: 'X-API-Key' }, 'ApiKeyAuth')
     .addTag('public-materials', 'Read-only materials (public)')
     .addTag('public-categories', 'Read-only categories (public)')
     .build();

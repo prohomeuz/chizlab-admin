@@ -27,7 +27,7 @@ export interface AppConfig {
   minioBucket: string;
   minioPublicUrl: string;
   // Security
-  publicApiKey: string;
+  publicAllowedOrigins: string[];
   internalCallbackSecret: string;
   corsOrigins: string[];
 }
@@ -59,7 +59,10 @@ export default registerAs('app', (): AppConfig => ({
   minioBucket: process.env['MINIO_BUCKET'] ?? 'chizlab-media',
   minioPublicUrl: process.env['MINIO_PUBLIC_URL'] ?? 'http://localhost:9000/chizlab-media',
 
-  publicApiKey: process.env['PUBLIC_API_KEY'] ?? '',
+  publicAllowedOrigins: (process.env['PUBLIC_ALLOWED_ORIGINS'] ?? 'chizlab.uz,www.chizlab.uz,api.chizlab.uz')
+    .split(',')
+    .map(o => o.trim().toLowerCase())
+    .filter(Boolean),
   internalCallbackSecret: process.env['INTERNAL_CALLBACK_SECRET'] ?? '',
   corsOrigins: (process.env['CORS_ORIGINS'] ?? '')
     .split(',')
