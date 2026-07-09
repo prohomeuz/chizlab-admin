@@ -1,11 +1,10 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CategoriesService } from '../categories/categories.service';
-import { ApiKeyGuard } from './api-key.guard';
+import { OriginGuard } from './origin.guard';
 
 @ApiTags('public-categories')
-@ApiSecurity('ApiKeyAuth')
-@UseGuards(ApiKeyGuard)
+@UseGuards(OriginGuard)
 @Controller('api/public/categories')
 export class PublicCategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}

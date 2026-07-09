@@ -28,7 +28,7 @@ AI worker powered by Google Gemini.
 
 ### 2.2 Public API — `/api/public/*`
 
-- Protected by **`X-API-Key`** header (validated against `PUBLIC_API_KEY` env var).
+- Restricted to requests whose `Origin` (or `Referer`, as fallback) hostname is in `PUBLIC_ALLOWED_ORIGINS`.
 - **GET only** — no mutations allowed.
 - Filter rules (hard-coded, not client-controllable):
   - `status = 'active'`
@@ -107,7 +107,7 @@ AI worker powered by Google Gemini.
 | pgvector unavailable on target Postgres image | Low | Medium | Use `pgvector/pgvector` Docker image. Embedding column is nullable; feature is gated — app boots without it. |
 | AI provider lock-in (Gemini) | Low | Medium | `AIProvider` interface with Gemini implementation + OpenAI/Anthropic stubs. Switching = env var change only. |
 | Media storage data loss on redeploy | Low | High | MinIO backed by named persistent Docker volume on host. Documented in `infra/`. |
-| Public API scraping / abuse | Medium | Medium | `X-API-Key` required on all `/api/public/*` endpoints. Key rotated via env var without code change. |
+| Public API scraping / abuse | Medium | Medium | `/api/public/*` endpoints restricted to allowed `Origin`/`Referer` hostnames via `PUBLIC_ALLOWED_ORIGINS`. Note: these headers are client-supplied and spoofable by non-browser clients — this is a soft restriction, not a hard auth boundary. |
 | AI worker job loss on Redis restart | Low | Medium | Redis AOF persistence enabled in docker-compose. Bull queue retries 3× with exponential backoff. |
 | Large media file upload timeouts | Medium | Low | 100 MB limit enforced by NestJS interceptor + Nginx/proxy config. Chunked streaming if needed in v2. |
 | Contract drift between frontend and backend | Medium | High | `packages/contracts/openapi.yaml` is single source of truth. Backend generates Swagger from DTOs and CI diffs against contract. |
