@@ -970,8 +970,10 @@ export function MaterialFormPage() {
               <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary-muted/20 px-4 py-3 mb-5">
                 <div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent flex-shrink-0" />
                 <p className="text-sm text-text-primary">
-                  AI tanlangan sahifalarni tahlil qilmoqda — maydonlar avtomatik to'ladi
-                  {typeof processingDisplayed === 'number' ? ` (${processingDisplayed}%)` : ''}
+                  AI tahlil qilmoqda
+                  {typeof processingDisplayed === 'number' && (
+                    <span className="tabular-nums text-text-secondary"> · {processingDisplayed}%</span>
+                  )}
                 </p>
               </div>
             )}
