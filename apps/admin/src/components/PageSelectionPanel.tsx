@@ -137,15 +137,17 @@ export function PageSelectionPanel({ mediaUrl, onChange, onStateChange }: PageSe
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-text-secondary">
-              AI tahlili uchun sahifalarni tanlang — {pageCount} ta sahifadan {selected.size} tasi
-              tanlangan
-              <span className="text-xs text-text-muted ml-2">
-                (kattalashtirish uchun 2 marta bosing)
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-text-secondary whitespace-nowrap">
+              <span className="font-medium text-text-primary tabular-nums">
+                {selected.size}/{pageCount}
+              </span>{' '}
+              sahifa tanlangan
+              <span className="text-xs text-text-muted ml-2 hidden sm:inline">
+                · 2 marta bosib kattalashtiring
               </span>
             </p>
-            <label className="flex items-center gap-2 text-sm text-primary cursor-pointer select-none hover:underline">
+            <label className="flex items-center gap-2 text-sm text-primary cursor-pointer select-none hover:underline whitespace-nowrap">
               <input
                 type="checkbox"
                 checked={allSelected}
@@ -156,7 +158,7 @@ export function PageSelectionPanel({ mediaUrl, onChange, onStateChange }: PageSe
                 className="h-4 w-4 accent-primary cursor-pointer"
                 aria-label="Hammasini tanlash yoki bekor qilish"
               />
-              {allSelected ? 'Hammasini bekor qilish' : 'Hammasini tanlash'}
+              {allSelected ? 'Bekor qilish' : 'Hammasini tanlash'}
             </label>
           </div>
 
@@ -176,7 +178,7 @@ export function PageSelectionPanel({ mediaUrl, onChange, onStateChange }: PageSe
                   key={page}
                   onClick={() => togglePage(page)}
                   onDoubleClick={() => setZoomPage(page)}
-                  className={`relative rounded-lg overflow-hidden border-2 transition-all duration-150 ${
+                  className={`relative aspect-[3/4] rounded-lg overflow-hidden border-2 bg-white transition-all duration-150 ${
                     isSelected
                       ? 'border-primary ring-2 ring-primary/30'
                       : 'border-border opacity-50 hover:opacity-80'
@@ -184,7 +186,13 @@ export function PageSelectionPanel({ mediaUrl, onChange, onStateChange }: PageSe
                   aria-pressed={isSelected}
                   aria-label={`${page}-sahifa${isSelected ? ', tanlangan' : ''}`}
                 >
-                  <img src={url} alt={`Sahifa ${page}`} className="w-full h-auto block" />
+                  <img
+                    src={url}
+                    alt={`Sahifa ${page}`}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-contain block"
+                  />
                   <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
                     {page}
                   </span>
