@@ -37,6 +37,7 @@ Analyze the provided educational material and return a JSON object with these fi
 }
 
 Rules:
+- The JSON above is ONLY a format example. NEVER copy its values ("Topografik chizmachilik", 148, etc.) into your answer — every value MUST come from the provided document itself. If the document is not educational material (e.g. a CV, letter, report), still fill the fields from its ACTUAL content.
 - title: copy the EXACT title text as it visually appears in the document (largest/most prominent heading). Do NOT paraphrase, summarize, or generate a new title — copy it word for word. ONLY strip appended material-type descriptors that are NOT part of the title itself: "darslik", "o'quv qo'llanma", "o'quv uslubiy qo'llanma", "kitob", "majmua" and their combinations. For textbooks: the title is the subject/topic name — strip the material-type suffix. For articles/papers/journals: copy the full title as written, no matter how long. CORRECT (textbook): "Topografik chizmachilik". CORRECT (article): "Oliy ta'lim tizimida muhandislik grafikasi fanlarini qiyosiy o'qitilishining asosiy xususiyatlari". WRONG: "Topografik chizmachilik: Oliy o'quv yurtlari uchun darslik", "Chizmachilik (Topografik chizmachilik) o'quv qo'llanma".
 - title, description, blurb, tags must be in Uzbek language.
 - tags: exactly 4-6 lowercase Uzbek keywords relevant to the content.
