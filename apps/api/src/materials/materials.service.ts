@@ -259,7 +259,9 @@ export class MaterialsService {
       }
       if (fields.coverUrl != null) material.coverUrl = fields.coverUrl;
       material.isReady = true;
-      material.status = MaterialStatus.READY;
+      // AI natijasi qoralama bo'lib turadi — admin formani ko'rib chiqib
+      // "Saqlash"ni bosgandagina material READY bo'ladi (public API'ga chiqadi).
+      material.status = MaterialStatus.DRAFT;
     } else {
       // Technical failure — move out of pending so UI polling stops
       material.isReady = false;

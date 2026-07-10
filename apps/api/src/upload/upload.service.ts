@@ -17,10 +17,6 @@ const ALLOWED_MIME_TYPES = [
   'application/vnd.ms-powerpoint',                                              // .ppt
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',  // .pptx
   'application/vnd.oasis.opendocument.presentation',                            // .odp
-  // Spreadsheets (optional — for tabular material)
-  'application/vnd.ms-excel',                                                   // .xls
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',          // .xlsx
-  'application/vnd.oasis.opendocument.spreadsheet',                             // .ods
 ];
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
@@ -65,7 +61,7 @@ export class UploadService {
 
     if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
       throw new BadRequestException(
-        `Qo'llab-quvvatlanmaydigan fayl turi: ${file.mimetype}. Ruxsat etilgan: PDF, DOC, DOCX, PPT, PPTX, ODP, ODT, ODS`,
+        `Qo'llab-quvvatlanmaydigan fayl turi: ${file.mimetype}. Ruxsat etilgan: PDF, DOC, DOCX, PPT, PPTX, ODP, ODT`,
       );
     }
 

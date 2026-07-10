@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 AI_JOBS_KEY = "chizlab:ai:pending"
 PAGE_PREP_JOBS_KEY = "chizlab:pages:pending"
-MAX_RETRIES = 1
+MAX_RETRIES = 3
 PROGRESS_TTL = 3600  # seconds
 
 

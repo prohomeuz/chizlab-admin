@@ -15,8 +15,7 @@ import {
 } from '../api/materials'
 import { Button } from '../components/Button'
 import { Layout } from '../components/Layout'
-import { MaterialAnalyzingOverlay } from '../components/MaterialAnalyzingOverlay'
-import { PageSelectionModal } from '../components/PageSelectionModal'
+import { PageSelectionPanel } from '../components/PageSelectionPanel'
 import { useToastContext } from '../context/ToastContext'
 
 // ---------------------------------------------------------------------------
@@ -38,10 +37,7 @@ const ACCEPTED_MIME =
   'application/vnd.ms-powerpoint,.ppt,.pptx,' +
   'application/vnd.openxmlformats-officedocument.presentationml.presentation,' +
   'application/vnd.oasis.opendocument.text,' +
-  'application/vnd.oasis.opendocument.presentation,.odp,.odt,.ods,' +
-  'application/vnd.ms-excel,.xls,' +
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx,' +
-  'application/vnd.oasis.opendocument.spreadsheet'
+  'application/vnd.oasis.opendocument.presentation,.odp,.odt'
 
 const ACCEPTED_EXTENSIONS = [
   '.pdf',
@@ -51,9 +47,6 @@ const ACCEPTED_EXTENSIONS = [
   '.pptx',
   '.odp',
   '.odt',
-  '.ods',
-  '.xls',
-  '.xlsx',
 ]
 
 function isAccepted(file: File): boolean {
@@ -257,7 +250,7 @@ function DropzoneUpload({
     if (disabled) return
     if (!isAccepted(file)) {
       setUploadError(
-        'Bu fayl turi qabul qilinmaydi. PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX formatlarini yuklang.',
+        'Bu fayl turi qabul qilinmaydi. PDF, DOC, DOCX, PPT, PPTX formatlarini yuklang.',
       )
       return
     }
@@ -452,7 +445,7 @@ function DropzoneUpload({
             </p>
             {!disabled && (
               <p className="text-xs text-text-muted mt-1">
-                PDF · Word · PowerPoint · Excel · 100 MB gacha
+                PDF · Word · PowerPoint · 100 MB gacha
               </p>
             )}
           </div>
@@ -746,30 +739,19 @@ export function MaterialFormPage() {
   const watchedMediaUrl = watch('mediaUrl')
   const canUpload = Boolean(watchedMaterialType) && Boolean(watchedCategoryId)
 
-  // ── Page-selection: after upload, require the admin to confirm which
-  // pages the AI should analyze before the material can be saved.
-  const [pagePrepOpen, setPagePrepOpen] = useState(false)
-  const [pagePrepConfirmedUrl, setPagePrepConfirmedUrl] = useState<string | null>(null)
+  // ── Page-selection: the inline panel below the dropzone prepares page
+  // thumbnails as soon as a file is uploaded. Saving is blocked until the
+  // thumbnails are ready and at least one page is selected.
+  const [pagePrep, setPagePrep] = useState({ ready: false, selectedCount: 0 })
   const pagePrepPending =
-    !isEdit && !!watchedMediaUrl && watchedMediaUrl !== pagePrepConfirmedUrl
+    !isEdit && !!watchedMediaUrl && (!pagePrep.ready || pagePrep.selectedCount === 0)
 
   useEffect(() => {
-    if (!isEdit && watchedMediaUrl && watchedMediaUrl !== pagePrepConfirmedUrl) {
-      setPagePrepOpen(true)
+    if (!watchedMediaUrl) {
+      setPagePrep({ ready: false, selectedCount: 0 })
+      setValue('selectedPages', null)
     }
-  }, [isEdit, watchedMediaUrl, pagePrepConfirmedUrl])
-
-  const handlePagePrepCancel = () => {
-    setPagePrepOpen(false)
-    setValue('mediaUrl', null)
-    setValue('selectedPages', null)
-  }
-
-  const handlePagePrepConfirm = (selectedPages: number[] | null) => {
-    setValue('selectedPages', selectedPages)
-    setPagePrepConfirmedUrl(watchedMediaUrl)
-    setPagePrepOpen(false)
-  }
+  }, [watchedMediaUrl, setValue])
 
   useEffect(() => {
     if (material) {
@@ -862,7 +844,8 @@ export function MaterialFormPage() {
     }
   }, [isEdit, material?.status, material?.id, processingId])
 
-  const showAnalyzingOverlay = Boolean(processingId) || (isEdit && material?.status === 'pending')
+  // AI hali ishlayapti — forma ochiq, lekin maydonlar loading holatida
+  const aiLoading = isEdit && material?.status === 'pending'
 
   const createMutation = useMutation({
     mutationFn: (values: FormValues) =>
@@ -874,8 +857,9 @@ export function MaterialFormPage() {
       }),
     onSuccess: (newMaterial) => {
       void queryClient.invalidateQueries({ queryKey: ['materials'] })
-      addToast('Material muvaffaqiyatli yaratildi', 'success')
       setProcessingId(newMaterial.id)
+      // Darhol input sahifasiga o'tamiz — maydonlar AI tugaguncha loading holatida turadi
+      navigate(`/materials/${newMaterial.id}/edit`, { replace: true })
     },
     onError: () => {
       addToast('Saqlashda xatolik yuz berdi', 'error')
@@ -896,7 +880,8 @@ export function MaterialFormPage() {
         publishYear: values.publishYear ?? undefined,
         country: values.country || undefined,
         pageCount: values.pageCount ?? undefined,
-        status: values.status,
+        // Saqlash = yakuniy tasdiq: material shu yerda READY bo'ladi
+        status: 'ready',
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['materials'] })
@@ -936,7 +921,7 @@ export function MaterialFormPage() {
     <Layout
       title={pageTitle}
       actions={
-        showAnalyzingOverlay ? undefined : isEdit ? (
+        isEdit ? (
           <Button variant="secondary" size="sm" onClick={() => navigate('/materials')}>
             Bekor qilish
           </Button>
@@ -949,20 +934,20 @@ export function MaterialFormPage() {
               void handleSubmit(onSubmit)()
             }}
           >
+            Keyingi
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4 mr-1.5 -ml-0.5"
+              className="h-4 w-4 ml-1.5 -mr-0.5"
               viewBox="0 0 20 20"
               fill="currentColor"
               aria-hidden="true"
             >
               <path
                 fillRule="evenodd"
-                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"
                 clipRule="evenodd"
               />
             </svg>
-            Saqlash
           </Button>
         )
       }
@@ -975,17 +960,43 @@ export function MaterialFormPage() {
         noValidate
         className="w-full flex-1 flex flex-col"
       >
-        {showAnalyzingOverlay ? (
+        {isEdit ? (
           // ----------------------------------------------------------------
-          // PROCESSING STATE — AI is analysing the material (fresh create OR
-          // navigating directly to a still-pending material's edit page)
+          // EDIT MODE — full form. AI hali ishlayotgan bo'lsa maydonlar
+          // disabled + pulse holatida turadi va tugagach avtomatik to'ladi.
           // ----------------------------------------------------------------
-          <MaterialAnalyzingOverlay progress={processingDisplayed} />
-        ) : isEdit ? (
-          // ----------------------------------------------------------------
-          // EDIT MODE — full form
-          // ----------------------------------------------------------------
-          <div className="grid grid-cols-[70fr_30fr] gap-6 items-start">
+          <fieldset disabled={aiLoading} className={aiLoading ? 'ai-loading' : ''}>
+            {aiLoading && (
+              <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary-muted/20 px-4 py-3 mb-5">
+                <div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent flex-shrink-0" />
+                <p className="text-sm text-text-primary">
+                  AI tanlangan sahifalarni tahlil qilmoqda — maydonlar avtomatik to'ladi
+                  {typeof processingDisplayed === 'number' ? ` (${processingDisplayed}%)` : ''}
+                </p>
+              </div>
+            )}
+            {!aiLoading && material?.status === 'draft' && !material.isReady && (
+              <div className="flex items-center gap-3 rounded-lg border border-[#e0b13d]/50 bg-[#fdf6e3] px-4 py-3 mb-5">
+                <svg
+                  className="h-5 w-5 text-[#b7791f] flex-shrink-0"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <p className="text-sm text-[#7a5c14]">
+                  AI tahlili muvaffaqiyatsiz tugadi (internet yoki AI xizmatidagi uzilish bo'lishi
+                  mumkin). Maydonlarni qo'lda to'ldirib saqlashingiz yoki materialni qaytadan
+                  yaratishingiz mumkin.
+                </p>
+              </div>
+            )}
+            <div className="grid grid-cols-[70fr_30fr] gap-6 items-start">
             <div className="space-y-5">
               {/* Media */}
               <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-6">
@@ -1018,7 +1029,7 @@ export function MaterialFormPage() {
                       <input
                         {...field}
                         value={field.value ?? ''}
-                        placeholder="Sarlavha"
+                        placeholder={aiLoading ? "Ma'lumot olinmoqda..." : 'Sarlavha'}
                         className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
                       />
                     </div>
@@ -1034,7 +1045,9 @@ export function MaterialFormPage() {
                       <textarea
                         {...field}
                         value={field.value ?? ''}
-                        placeholder="Materialning qisqa marketing tavsifi"
+                        placeholder={
+                          aiLoading ? "Ma'lumot olinmoqda..." : 'Materialning qisqa marketing tavsifi'
+                        }
                         rows={3}
                         className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all resize-y disabled:bg-bg-sunken disabled:opacity-60"
                       />
@@ -1280,14 +1293,15 @@ export function MaterialFormPage() {
                 </div>
               )}
             </div>
-          </div>
+            </div>
+          </fieldset>
         ) : (
           // ----------------------------------------------------------------
           // CREATE MODE — minimal: file + type + category
           // ----------------------------------------------------------------
           <div className="flex-1 flex flex-col gap-5">
             <div className="grid grid-cols-[7fr_3fr] gap-5 items-stretch flex-1 min-h-0">
-              {/* Left 70%: Media fayl */}
+              {/* Left 70%: Media fayl + inline sahifa tanlash */}
               <div className="bg-bg-elevated rounded-lg shadow-card border border-border p-6 flex flex-col">
                 <Controller
                   name="mediaUrl"
@@ -1297,13 +1311,21 @@ export function MaterialFormPage() {
                       value={field.value}
                       onChange={field.onChange}
                       error={errors.mediaUrl?.message}
-                      fillHeight
+                      fillHeight={!field.value}
                       readOnly={isEdit}
                       disabled={!isEdit && !canUpload}
                       disabledHint="Fayl yuklashdan oldin Material turi va Kategoriyani tanlang"
                     />
                   )}
                 />
+                {watchedMediaUrl && (
+                  <PageSelectionPanel
+                    key={watchedMediaUrl}
+                    mediaUrl={watchedMediaUrl}
+                    onChange={(sp) => setValue('selectedPages', sp)}
+                    onStateChange={setPagePrep}
+                  />
+                )}
               </div>
 
               {/* Right 30%: Material turi + Kategoriya stacked */}
@@ -1338,14 +1360,6 @@ export function MaterialFormPage() {
         )}
       </form>
 
-      {!isEdit && (
-        <PageSelectionModal
-          open={pagePrepOpen}
-          mediaUrl={watchedMediaUrl}
-          onCancel={handlePagePrepCancel}
-          onConfirm={handlePagePrepConfirm}
-        />
-      )}
     </Layout>
   )
 }
