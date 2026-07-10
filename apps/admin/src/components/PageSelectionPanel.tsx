@@ -178,7 +178,7 @@ export function PageSelectionPanel({ mediaUrl, onChange, onStateChange }: PageSe
                   key={page}
                   onClick={() => togglePage(page)}
                   onDoubleClick={() => setZoomPage(page)}
-                  className={`relative aspect-[3/4] rounded-lg overflow-hidden border-2 bg-white transition-all duration-150 ${
+                  className={`relative w-full pt-[133.33%] rounded-lg overflow-hidden border-2 bg-white transition-all duration-150 ${
                     isSelected
                       ? 'border-primary ring-2 ring-primary/30'
                       : 'border-border opacity-50 hover:opacity-80'
@@ -191,7 +191,7 @@ export function PageSelectionPanel({ mediaUrl, onChange, onStateChange }: PageSe
                     alt={`Sahifa ${page}`}
                     loading="lazy"
                     decoding="async"
-                    className="w-full h-full object-contain block"
+                    className="absolute inset-0 w-full h-full object-contain"
                   />
                   <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
                     {page}
