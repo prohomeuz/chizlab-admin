@@ -41,19 +41,18 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFon
     return lines or [""]
 
 
-def _wrap_authors(
+def _wrap_authors_raw(
     draw: ImageDraw.ImageDraw,
     text: str,
     font: ImageFont.FreeTypeFont,
     first_line_width: int,
     rest_width: int,
-    max_lines: int,
 ) -> list[str]:
     """
-    Word-wrap author text across multiple lines. The first line is narrower
+    Word-wrap author text across as many lines as needed to fit the given
+    widths, with no limit on the number of lines. The first line is narrower
     (it shares its row with the country/year text); later lines use the full
-    width. If the text still doesn't fit within max_lines, the last line is
-    truncated with an ellipsis instead of letting it collide with the title.
+    width.
     """
     words = text.split()
     lines: list[str] = []
@@ -70,19 +69,76 @@ def _wrap_authors(
             current = word
     if current:
         lines.append(current)
-
-    if len(lines) > max_lines:
-        lines = lines[:max_lines]
-        width_limit = first_line_width if max_lines == 1 else rest_width
-        last = lines[-1]
-        while last:
-            bbox = draw.textbbox((0, 0), last + "...", font=font)
-            if bbox[2] - bbox[0] <= width_limit:
-                break
-            last = last[:-1]
-        lines[-1] = (last.rstrip(", ") + "...") if last else "..."
-
     return lines or [""]
+
+
+def _truncate_to_max_lines(
+    draw: ImageDraw.ImageDraw,
+    lines: list[str],
+    max_lines: int,
+    font: ImageFont.FreeTypeFont,
+    first_line_width: int,
+    rest_width: int,
+) -> list[str]:
+    """Cut a wrapped line list down to max_lines, ellipsizing the last line
+    so it never exceeds its row's width."""
+    if len(lines) <= max_lines:
+        return lines
+    lines = lines[:max_lines]
+    width_limit = first_line_width if max_lines == 1 else rest_width
+    last = lines[-1]
+    while last:
+        bbox = draw.textbbox((0, 0), last + "...", font=font)
+        if bbox[2] - bbox[0] <= width_limit:
+            break
+        last = last[:-1]
+    lines[-1] = (last.rstrip(", ") + "...") if last else "..."
+    return lines
+
+
+def _fit_authors(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font_path: str,
+    start_size: int,
+    min_size: int,
+    first_line_width: int,
+    rest_width: int,
+    available_h: int,
+) -> tuple[ImageFont.FreeTypeFont, list[str], int]:
+    """
+    Word-wrap author text to fit within available_h, shrinking the font size
+    (down to min_size) before ever truncating text with an ellipsis. This
+    keeps long author lists (which cause the most overlap risk) readable
+    instead of just getting cut off, while guaranteeing the wrapped block's
+    real rendered height never collides with whatever is drawn below it.
+
+    Line height is derived from the font's real ascent+descent metrics
+    rather than a fixed multiplier of the font size, since a flat multiplier
+    can under-estimate the actual glyph height (diacritics, tall letters)
+    and let lines sit closer together — or closer to the title — than
+    intended.
+    """
+    size = start_size
+    font = ImageFont.truetype(font_path, size)
+    lines: list[str] = [""]
+    line_h = 1
+
+    while True:
+        font = ImageFont.truetype(font_path, size)
+        ascent, descent = font.getmetrics()
+        line_h = max(ascent + descent, 1)
+        max_lines = max(1, available_h // line_h)
+
+        lines = _wrap_authors_raw(draw, text, font, first_line_width, rest_width)
+
+        if len(lines) <= max_lines or size <= min_size:
+            lines = _truncate_to_max_lines(draw, lines, max_lines, font, first_line_width, rest_width)
+            break
+
+        size -= 1
+
+    return font, lines, line_h
 
 
 def generate_cover(
@@ -128,18 +184,27 @@ def generate_cover(
 
     # Authors — top-left, wrapped across multiple lines (not squeezed onto
     # one line) so long author lists don't overlap the title or run off-cover.
+    # The font shrinks (down to a floor) before anything gets truncated, so
+    # long author lists stay fully readable instead of just getting cut off.
     avtor_text = ", ".join(authors) if authors else ""
     y_authors = int(21 * sy)
     if avtor_text:
         first_line_w = max(int(357 * sx) - joy_yil_w - int(30 * sx), int(60 * sx))
         rest_line_w = max_w
-        line_h_authors = max(int(font_small.size * 1.3), 1)
         available_h = y_title - y_authors - int(6 * sy)
-        max_lines = max(1, available_h // line_h_authors)
 
-        author_lines = _wrap_authors(draw, avtor_text, font_small, first_line_w, rest_line_w, max_lines)
+        font_authors, author_lines, line_h_authors = _fit_authors(
+            draw,
+            avtor_text,
+            str(ASSETS_DIR / "Gilroy-Light.ttf"),
+            start_size=int(13 * sy),
+            min_size=max(int(9 * sy), 8),
+            first_line_width=first_line_w,
+            rest_width=rest_line_w,
+            available_h=available_h,
+        )
         for i, line in enumerate(author_lines):
-            draw.text((int(20 * sx), y_authors + i * line_h_authors), line, font=font_small, fill=(255, 255, 255))
+            draw.text((int(20 * sx), y_authors + i * line_h_authors), line, font=font_authors, fill=(255, 255, 255))
 
     # Country + Year — top-right (right-aligned, before logo area)
     if joy_yil:
