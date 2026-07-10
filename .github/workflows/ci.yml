@@ -25,7 +25,7 @@ jobs:
         run: docker build -t chizlab-ai-worker:ci services/ai-worker/
 
   # ── Deploy to VPS ──────────────────────────────────────────────────────────
-  # Requires repository secrets: VPS_HOST, VPS_USER, VPS_SSH_KEY
+  # Requires repository secrets: VPS_HOST, VPS_USER, VPS_PASSWORD
   deploy:
     name: Deploy to VPS
     needs: docker-build
@@ -38,7 +38,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          password: ${{ secrets.VPS_PASSWORD }}
           script: |
             cd /opt/chizlab-admin
             git pull origin main

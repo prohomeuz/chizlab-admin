@@ -33,16 +33,21 @@ def _extract_key_from_url(media_url: str) -> str:
     """
     Extract the S3 object key from a MinIO public URL.
 
-    Example:
-        http://localhost:9000/chizlab-media/abc123.pdf  →  abc123.pdf
+    The bucket segment may appear anywhere in the path, because production
+    serves MinIO behind an nginx prefix:
+
+        http://localhost:9000/chizlab-media/abc123.pdf                     →  abc123.pdf
+        https://admin.chizlab.uz/media/chizlab-media/abc123.pdf            →  abc123.pdf
+        https://admin.chizlab.uz/media/chizlab-media/page-prep/j/p-1.jpg   →  page-prep/j/p-1.jpg
     """
     settings = get_settings()
     parsed = urlparse(media_url)
-    # Path looks like /<bucket>/<key> or just /<key>
     path = parsed.path.lstrip("/")
     bucket = settings.minio_bucket.strip("/")
-    if path.startswith(bucket + "/"):
-        return path[len(bucket) + 1:]
+    segments = path.split("/")
+    if bucket in segments:
+        idx = segments.index(bucket)
+        return "/".join(segments[idx + 1:])
     # Fallback: treat everything after the first slash as the key
     parts = path.split("/", 1)
     return parts[1] if len(parts) > 1 else path
