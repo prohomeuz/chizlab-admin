@@ -222,6 +222,7 @@ function DropzoneUpload({
   readOnly = false,
   disabled = false,
   disabledHint,
+  onUploadingChange,
 }: {
   value: string | null
   onChange: (url: string | null) => void
@@ -230,6 +231,7 @@ function DropzoneUpload({
   readOnly?: boolean
   disabled?: boolean
   disabledHint?: string
+  onUploadingChange?: (uploading: boolean) => void
 }) {
   const [progress, setProgress] = useState<number | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -245,6 +247,10 @@ function DropzoneUpload({
       setFadeVisible(false)
     }
   }, [value])
+
+  useEffect(() => {
+    onUploadingChange?.(uploading)
+  }, [uploading, onUploadingChange])
 
   const handleFile = async (file: File) => {
     if (disabled) return
@@ -739,6 +745,10 @@ export function MaterialFormPage() {
   const watchedMediaUrl = watch('mediaUrl')
   const canUpload = Boolean(watchedMaterialType) && Boolean(watchedCategoryId)
 
+  // True while the media file is uploading — blocks the primary action so
+  // the admin can't advance before the file finishes uploading.
+  const [mediaUploading, setMediaUploading] = useState(false)
+
   // ── Page-selection: the inline panel below the dropzone prepares page
   // thumbnails as soon as a file is uploaded. Saving is blocked until the
   // thumbnails are ready and at least one page is selected.
@@ -901,7 +911,7 @@ export function MaterialFormPage() {
     if (isEdit) {
       await updateMutation.mutateAsync(values)
     } else {
-      if (pagePrepPending) return
+      if (pagePrepPending || mediaUploading) return
       await createMutation.mutateAsync(values)
     }
   }
@@ -932,7 +942,7 @@ export function MaterialFormPage() {
           <Button
             size="sm"
             loading={isBusy}
-            disabled={pagePrepPending}
+            disabled={pagePrepPending || mediaUploading}
             onClick={() => {
               void handleSubmit(onSubmit)()
             }}
@@ -1320,6 +1330,7 @@ export function MaterialFormPage() {
                       readOnly={isEdit}
                       disabled={!isEdit && !canUpload}
                       disabledHint="Fayl yuklashdan oldin Material turi va Kategoriyani tanlang"
+                      onUploadingChange={setMediaUploading}
                     />
                   )}
                 />
