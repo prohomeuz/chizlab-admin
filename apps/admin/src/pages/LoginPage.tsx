@@ -17,6 +17,17 @@ function BackspaceIcon() {
   );
 }
 
+function ClipboardIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"
+      strokeLinejoin="round" aria-hidden="true">
+      <rect x="8" y="2" width="8" height="4" rx="1" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    </svg>
+  );
+}
+
 function WarningIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
@@ -166,6 +177,21 @@ export function LoginPage() {
     });
   }, [isLocked, loading]);
 
+  // --- One-click paste: read the PIN straight from the clipboard ---
+  const pasteFromClipboard = useCallback(async () => {
+    if (isLocked || loading) return;
+    try {
+      const text = await navigator.clipboard.readText();
+      const nums = text.replace(/\D/g, '').slice(0, PIN_LENGTH);
+      if (!nums) return;
+      const next = Array(PIN_LENGTH).fill('');
+      for (let i = 0; i < nums.length; i++) next[i] = nums[i]!;
+      setDigits(next);
+    } catch {
+      // clipboard read unavailable / denied — user can still type or Ctrl+V
+    }
+  }, [isLocked, loading]);
+
   // --- Keyboard support ---
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -293,7 +319,13 @@ export function LoginPage() {
                 {n}
               </KeypadButton>
             ))}
-            <div style={{ height: 60 }} />
+            <KeypadButton
+              onClick={() => { void pasteFromClipboard(); }}
+              disabled={keypadDisabled || filledCount === PIN_LENGTH}
+              label="Parolni joylash"
+            >
+              <ClipboardIcon />
+            </KeypadButton>
             <KeypadButton
               onClick={() => addDigit('0')}
               disabled={keypadDisabled || filledCount === PIN_LENGTH}
