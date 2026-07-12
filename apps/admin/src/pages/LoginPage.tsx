@@ -5,6 +5,13 @@ import axios from 'axios';
 
 const PIN_LENGTH = 8;
 
+// Return the PIN only when the text is exactly 8 digits (whitespace ignored),
+// otherwise null — used to validate the clipboard before enabling quick-paste.
+function readPin(text: string): string | null {
+  const raw = text.replace(/\s+/g, '');
+  return /^\d{8}$/.test(raw) ? raw : null;
+}
+
 function BackspaceIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
@@ -112,6 +119,9 @@ export function LoginPage() {
   const [loading, setLoading]       = useState(false);
   const [shakeKey, setShakeKey]     = useState(0);
   const [lockoutUntil, setLockoutUntil] = useState<Date | null>(null);
+  // 'valid' = clipboard holds an 8-digit PIN, 'invalid' = it doesn't (disable quick-paste),
+  // 'unknown' = couldn't read it (keep the button usable — validate on click).
+  const [clipboardState, setClipboardState] = useState<'valid' | 'invalid' | 'unknown'>('unknown');
 
   const { login } = useAuth();
   const navigate  = useNavigate();
@@ -177,16 +187,53 @@ export function LoginPage() {
     });
   }, [isLocked, loading]);
 
-  // --- One-click paste: read the PIN straight from the clipboard ---
+  // --- Keep the quick-paste button's enabled state in sync with the clipboard ---
+  const evaluateClipboard = useCallback(async () => {
+    if (!navigator.clipboard?.readText) {
+      setClipboardState('unknown');
+      return;
+    }
+    try {
+      // Only auto-read when permission is already granted — avoids prompt spam.
+      const perms = navigator.permissions;
+      if (perms?.query) {
+        const status = await perms
+          .query({ name: 'clipboard-read' as unknown as PermissionName })
+          .catch(() => null);
+        if (status && status.state !== 'granted') {
+          setClipboardState('unknown');
+          return;
+        }
+      }
+      const text = await navigator.clipboard.readText();
+      setClipboardState(readPin(text) ? 'valid' : 'invalid');
+    } catch {
+      setClipboardState('unknown');
+    }
+  }, []);
+
+  useEffect(() => {
+    void evaluateClipboard();
+    const onFocus = () => { void evaluateClipboard(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [evaluateClipboard]);
+
+  // --- One-click paste: fill the PIN straight from the clipboard (8 digits only) ---
   const pasteFromClipboard = useCallback(async () => {
     if (isLocked || loading) return;
     try {
-      const text = await navigator.clipboard.readText();
-      const nums = text.replace(/\D/g, '').slice(0, PIN_LENGTH);
-      if (!nums) return;
-      const next = Array(PIN_LENGTH).fill('');
-      for (let i = 0; i < nums.length; i++) next[i] = nums[i]!;
-      setDigits(next);
+      const pin = readPin(await navigator.clipboard.readText());
+      if (!pin) {
+        setClipboardState('invalid');
+        return;
+      }
+      setClipboardState('valid');
+      setDigits(pin.split(''));
     } catch {
       // clipboard read unavailable / denied — user can still type or Ctrl+V
     }
@@ -321,8 +368,10 @@ export function LoginPage() {
             ))}
             <KeypadButton
               onClick={() => { void pasteFromClipboard(); }}
-              disabled={keypadDisabled || filledCount === PIN_LENGTH}
-              label="Parolni joylash"
+              disabled={keypadDisabled || filledCount === PIN_LENGTH || clipboardState === 'invalid'}
+              label={clipboardState === 'invalid'
+                ? "Buferda 8 xonali parol yo'q"
+                : 'Parolni buferdan joylash'}
             >
               <ClipboardIcon />
             </KeypadButton>
