@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { ToastContainer } from './components/Toast';
-import { CustomCursor } from './components/CustomCursor';
 import { LoginPage } from './pages/LoginPage';
 import { MaterialsListPage } from './pages/MaterialsListPage';
 import { MaterialFormPage } from './pages/MaterialFormPage';
@@ -70,7 +69,6 @@ export default function App() {
       <AuthProvider>
         <ToastProvider>
           <BrowserRouter>
-            <CustomCursor />
             <AppRoutes />
             <ToastContainer />
           </BrowserRouter>
