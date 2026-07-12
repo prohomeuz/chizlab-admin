@@ -176,6 +176,22 @@ export function LoginPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [addDigit, removeDigit]);
 
+  // --- Paste support: paste a copied 8-digit PIN (fills all slots → auto-submits) ---
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (isLocked || loading) return;
+      const text = e.clipboardData?.getData('text') ?? '';
+      const nums = text.replace(/\D/g, '').slice(0, PIN_LENGTH);
+      if (!nums) return;
+      e.preventDefault();
+      const next = Array(PIN_LENGTH).fill('');
+      for (let i = 0; i < nums.length; i++) next[i] = nums[i]!;
+      setDigits(next);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [isLocked, loading]);
+
   const keypadDisabled = isLocked || loading;
 
   return (

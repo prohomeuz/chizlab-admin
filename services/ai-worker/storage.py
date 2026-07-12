@@ -33,12 +33,15 @@ def _extract_key_from_url(media_url: str) -> str:
     """
     Extract the S3 object key from a MinIO public URL.
 
-    The bucket segment may appear anywhere in the path, because production
-    serves MinIO behind an nginx prefix:
+    The bucket segment may appear in the path when MinIO is served behind an
+    nginx prefix, or it may be absent when a dedicated media subdomain maps the
+    bucket to its root:
 
         http://localhost:9000/chizlab-media/abc123.pdf                     →  abc123.pdf
         https://admin.chizlab.uz/media/chizlab-media/abc123.pdf            →  abc123.pdf
         https://admin.chizlab.uz/media/chizlab-media/page-prep/j/p-1.jpg   →  page-prep/j/p-1.jpg
+        https://media.chizlab.uz/abc123.pdf                                →  abc123.pdf
+        https://media.chizlab.uz/page-prep/j/p-1.jpg                       →  page-prep/j/p-1.jpg
     """
     settings = get_settings()
     parsed = urlparse(media_url)
@@ -48,9 +51,9 @@ def _extract_key_from_url(media_url: str) -> str:
     if bucket in segments:
         idx = segments.index(bucket)
         return "/".join(segments[idx + 1:])
-    # Fallback: treat everything after the first slash as the key
-    parts = path.split("/", 1)
-    return parts[1] if len(parts) > 1 else path
+    # No bucket segment (e.g. media.chizlab.uz maps the bucket to its root) —
+    # the whole path IS the object key.
+    return path
 
 
 async def upload_image(image_bytes: bytes, key: str, content_type: str = "image/jpeg") -> str:
