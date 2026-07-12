@@ -742,13 +742,13 @@ export function MaterialFormPage() {
   // ── Page-selection: the inline panel below the dropzone prepares page
   // thumbnails as soon as a file is uploaded. Saving is blocked until the
   // thumbnails are ready and at least one page is selected.
-  const [pagePrep, setPagePrep] = useState({ ready: false, selectedCount: 0 })
+  const [pagePrep, setPagePrep] = useState({ ready: false, selectedCount: 0, pageCount: 0 })
   const pagePrepPending =
     !isEdit && !!watchedMediaUrl && (!pagePrep.ready || pagePrep.selectedCount === 0)
 
   useEffect(() => {
     if (!watchedMediaUrl) {
-      setPagePrep({ ready: false, selectedCount: 0 })
+      setPagePrep({ ready: false, selectedCount: 0, pageCount: 0 })
       setValue('selectedPages', null)
     }
   }, [watchedMediaUrl, setValue])
@@ -854,6 +854,9 @@ export function MaterialFormPage() {
         materialType: values.materialType,
         categoryId: values.categoryId,
         selectedPages: values.selectedPages ?? undefined,
+        // Real document page count from the page-prep render — deterministic, so
+        // "Sahifa soni" is always accurate regardless of what the AI extracts.
+        pageCount: pagePrep.pageCount || undefined,
       }),
     onSuccess: (newMaterial) => {
       void queryClient.invalidateQueries({ queryKey: ['materials'] })

@@ -7,7 +7,7 @@ interface PageSelectionPanelProps {
   mediaUrl: string
   /** null means "all pages" — AI analyzes the whole document, no need to restrict it. */
   onChange: (selectedPages: number[] | null) => void
-  onStateChange: (state: { ready: boolean; selectedCount: number }) => void
+  onStateChange: (state: { ready: boolean; selectedCount: number; pageCount: number }) => void
 }
 
 /**
@@ -54,7 +54,7 @@ export function PageSelectionPanel({ mediaUrl, onChange, onStateChange }: PageSe
     if (isDone && pageCount > 0) {
       setSelected(new Set(Array.from({ length: pageCount }, (_, i) => i + 1)))
       onChange(null)
-      onStateChange({ ready: true, selectedCount: pageCount })
+      onStateChange({ ready: true, selectedCount: pageCount, pageCount })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDone, pageCount])
@@ -63,7 +63,7 @@ export function PageSelectionPanel({ mediaUrl, onChange, onStateChange }: PageSe
     setSelected(next)
     const all = pageCount > 0 && next.size === pageCount
     onChange(all ? null : Array.from(next).sort((a, b) => a - b))
-    onStateChange({ ready: isDone, selectedCount: next.size })
+    onStateChange({ ready: isDone, selectedCount: next.size, pageCount })
   }
 
   const togglePage = (page: number) => {
