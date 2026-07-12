@@ -63,6 +63,10 @@ export class Material {
   @Column({ type: 'integer', nullable: true, name: 'publish_year' })
   publishYear!: number | null;
 
+  /** City/region where the material was published (e.g. "Toshkent"). */
+  @Column({ type: 'text', nullable: true, name: 'publish_place' })
+  publishPlace!: string | null;
+
   @Column({ type: 'text', nullable: true })
   country!: string | null;
 

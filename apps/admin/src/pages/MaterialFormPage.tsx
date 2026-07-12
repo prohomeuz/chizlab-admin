@@ -123,6 +123,7 @@ const formSchema = z.object({
   authors: z.array(z.string()),
   language: z.string().nullable().optional(),
   publishYear: z.number().int().min(1900).max(2100).nullable().optional(),
+  publishPlace: z.string().nullable().optional(),
   country: z.string().nullable().optional(),
   pageCount: z.number().int().min(1).nullable().optional(),
   status: z.enum(['pending', 'draft', 'ready'] as const),
@@ -733,6 +734,7 @@ export function MaterialFormPage() {
       authors: [],
       language: '',
       publishYear: null,
+      publishPlace: '',
       country: '',
       pageCount: null,
       status: 'pending',
@@ -775,6 +777,7 @@ export function MaterialFormPage() {
         authors: (material.authors ?? []).map(abbreviateAuthor),
         language: material.language ?? '',
         publishYear: material.publishYear ?? null,
+        publishPlace: material.publishPlace ?? '',
         country: material.country ?? '',
         pageCount: material.pageCount ?? null,
         status: material.status,
@@ -891,6 +894,7 @@ export function MaterialFormPage() {
         authors: values.authors,
         language: values.language || undefined,
         publishYear: values.publishYear ?? undefined,
+        publishPlace: values.publishPlace || undefined,
         country: values.country || undefined,
         pageCount: values.pageCount ?? undefined,
         // Saqlash = yakuniy tasdiq: material shu yerda READY bo'ladi
@@ -1143,6 +1147,24 @@ export function MaterialFormPage() {
                         {errors.publishYear && (
                           <p className="text-xs text-[#9b2c2c]">{errors.publishYear.message}</p>
                         )}
+                      </div>
+                    )}
+                  />
+
+                  <Controller
+                    name="publishPlace"
+                    control={control}
+                    render={({ field }) => (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-sm font-medium text-text-primary">
+                          Nashr etilgan joy
+                        </label>
+                        <input
+                          {...field}
+                          value={field.value ?? ''}
+                          placeholder={aiLoading ? "Ma'lumot olinmoqda..." : 'Toshkent'}
+                          className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                        />
                       </div>
                     )}
                   />
