@@ -1,11 +1,11 @@
 """
 Cover image generator for materials.
 
-Generates a JPEG book cover by drawing title, authors, and year
-onto the cover template using Gilroy fonts.
+Generates a JPEG book cover by drawing title, authors, publication
+place and year onto the cover template using Gilroy fonts.
 
 Usage:
-    cover_bytes = generate_cover("Title", ["Author One", "Author Two"], 2024, "O'zbekiston")
+    cover_bytes = generate_cover("Title", ["Author One"], 2024, "Toshkent", "O'zbekiston")
 """
 from __future__ import annotations
 
@@ -21,6 +21,37 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 
 REF_W, REF_H = 417, 587
 JPEG_QUALITY = 80
+
+# Vertical center (in reference units) of the logo icon baked into the
+# template's top-right corner — measured from cover-empty.jpg. The top text
+# row (authors + place/year) is centered on this line so it lines up with
+# the icon instead of sitting above it.
+ICON_CENTER_Y_REF = 33.4
+
+# Title sizing: the largest size (in reference units) that lets the wrapped
+# title fit within TITLE_MAX_LINES wins — short titles render big, long
+# titles shrink instead of spilling past three lines.
+TITLE_MAX_SIZE = 52
+TITLE_MIN_SIZE = 16
+TITLE_MAX_LINES = 3
+TITLE_LINE_SPACING = 1.2
+
+
+def _abbreviate_author(name: str) -> str:
+    """
+    "Raxmonjonov Xasan Aliyevich" → "X. A. Raxmonjonov" — the same rule the
+    admin form applies to author inputs, so the cover shows names exactly
+    as they appear in the form. Names already containing an initial
+    ("A. Tilegenov", "X.A. Raxmonjonov") pass through unchanged.
+    """
+    parts = name.strip().split()
+    if len(parts) < 2:
+        return name.strip()
+    if parts[0].endswith("."):
+        return " ".join(parts)
+    surname, *given = parts
+    initials = " ".join(p[0].upper() + "." for p in given if p)
+    return f"{initials} {surname}"
 
 
 def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[str]:
@@ -43,30 +74,48 @@ def _wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFon
 
 def _wrap_authors_raw(
     draw: ImageDraw.ImageDraw,
-    text: str,
+    tokens: list[str],
     font: ImageFont.FreeTypeFont,
     first_line_width: int,
     rest_width: int,
 ) -> list[str]:
     """
-    Word-wrap author text across as many lines as needed to fit the given
-    widths, with no limit on the number of lines. The first line is narrower
-    (it shares its row with the country/year text); later lines use the full
-    width.
+    Wrap author tokens across as many lines as needed to fit the given
+    widths, with no limit on the number of lines. Each token is one whole
+    author name ("X. A. Raxmonjonov,") and is kept intact — a name moves to
+    the next line as a unit instead of breaking between its initials and
+    surname. Only a name wider than a full line falls back to word-splitting.
+    The first line is narrower (it shares its row with the place/year text);
+    later lines use the full width.
     """
-    words = text.split()
     lines: list[str] = []
     current = ""
-    for word in words:
+
+    def _fits(text: str) -> bool:
         width_limit = first_line_width if not lines else rest_width
-        test = (current + " " + word).strip()
-        bbox = draw.textbbox((0, 0), test, font=font)
-        if bbox[2] - bbox[0] <= width_limit:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        return bbox[2] - bbox[0] <= width_limit
+
+    for token in tokens:
+        test = (current + " " + token).strip()
+        if _fits(test):
             current = test
+            continue
+        if current:
+            lines.append(current)
+            current = ""
+        if _fits(token):
+            current = token
         else:
-            if current:
-                lines.append(current)
-            current = word
+            # Single name wider than the whole line — split it by words.
+            for word in token.split():
+                test = (current + " " + word).strip()
+                if _fits(test):
+                    current = test
+                else:
+                    if current:
+                        lines.append(current)
+                    current = word
     if current:
         lines.append(current)
     return lines or [""]
@@ -98,7 +147,7 @@ def _truncate_to_max_lines(
 
 def _fit_authors(
     draw: ImageDraw.ImageDraw,
-    text: str,
+    tokens: list[str],
     font_path: str,
     start_size: int,
     min_size: int,
@@ -130,7 +179,7 @@ def _fit_authors(
         line_h = max(ascent + descent, 1)
         max_lines = max(1, available_h // line_h)
 
-        lines = _wrap_authors_raw(draw, text, font, first_line_width, rest_width)
+        lines = _wrap_authors_raw(draw, tokens, font, first_line_width, rest_width)
 
         if len(lines) <= max_lines or size <= min_size:
             lines = _truncate_to_max_lines(draw, lines, max_lines, font, first_line_width, rest_width)
@@ -141,20 +190,57 @@ def _fit_authors(
     return font, lines, line_h
 
 
+def _fit_title(
+    draw: ImageDraw.ImageDraw,
+    title: str,
+    font_path: str,
+    max_width: int,
+    sy: float,
+) -> tuple[ImageFont.FreeTypeFont, list[str], int]:
+    """
+    Pick the largest title font size (TITLE_MAX_SIZE → TITLE_MIN_SIZE, in
+    reference units) at which the word-wrapped title fits within
+    TITLE_MAX_LINES lines and no line overflows the text area. Short titles
+    render large; long titles shrink instead of wrapping past three lines.
+    Only when even the minimum size can't fit is the text ellipsized.
+
+    Returns (font, lines, line_height_px).
+    """
+    font = ImageFont.truetype(font_path, int(TITLE_MIN_SIZE * sy))
+    lines: list[str] = [""]
+    for size_ref in range(TITLE_MAX_SIZE, TITLE_MIN_SIZE - 1, -1):
+        font = ImageFont.truetype(font_path, int(size_ref * sy))
+        lines = _wrap_text(draw, title, font, max_width)
+        if len(lines) <= TITLE_MAX_LINES and all(
+            draw.textbbox((0, 0), line, font=font)[2] <= max_width for line in lines
+        ):
+            return font, lines, int(size_ref * TITLE_LINE_SPACING * sy)
+
+    # Even the minimum size can't fit — hard-cap at 3 lines with an ellipsis.
+    lines = _truncate_to_max_lines(draw, lines, TITLE_MAX_LINES, font, max_width, max_width)
+    return font, lines, int(TITLE_MIN_SIZE * TITLE_LINE_SPACING * sy)
+
+
 def generate_cover(
     title: str,
     authors: list[str],
     publish_year: int | None,
-    country: str | None,
+    publish_place: str | None = None,
+    country: str | None = None,
 ) -> bytes:
     """
     Generate a JPEG book cover and return its bytes.
 
     Args:
-        title:       Book/material title drawn in large Gilroy Medium.
-        authors:     Author names joined with comma in small Gilroy Light.
+        title:        Book/material title in large Gilroy Medium — font size
+                      adapts so the title never exceeds three lines.
+        authors:      Author names, abbreviated like the admin form
+                      ("X. A. Raxmonjonov"), joined with commas.
         publish_year: Publication year shown top-right.
-        country:     Country shown before year top-right (e.g. "O'zbekiston 2024").
+        publish_place: City/region of publication shown before the year
+                      top-right (e.g. "Toshkent 2024").
+        country:      Fallback for the top-right text when the publication
+                      place is unknown.
     """
     bg = Image.open(ASSETS_DIR / "cover-empty.jpg").convert("RGB")
     W, H = bg.size
@@ -165,10 +251,10 @@ def generate_cover(
     draw = ImageDraw.Draw(bg)
 
     font_small = ImageFont.truetype(str(ASSETS_DIR / "Gilroy-Light.ttf"), int(13 * sy))
-    font_title = ImageFont.truetype(str(ASSETS_DIR / "Gilroy-Medium.ttf"), int(40 * sy))
 
-    # Country + Year — compute width first to constrain author text
-    parts = [p for p in [country, str(publish_year) if publish_year else ""] if p]
+    # Place + Year — compute width first to constrain author text
+    joy = publish_place or country
+    parts = [p for p in [joy, str(publish_year) if publish_year else ""] if p]
     joy_yil = " ".join(parts)
     joy_yil_w = 0
     if joy_yil:
@@ -180,22 +266,32 @@ def generate_cover(
     x_title = int(20 * sx)
     y_title = int(112 * sy)
     max_w = int((357 - 20) * sx)
-    line_h = int(48 * sy)
 
-    # Authors — top-left, wrapped across multiple lines (not squeezed onto
-    # one line) so long author lists don't overlap the title or run off-cover.
-    # The font shrinks (down to a floor) before anything gets truncated, so
-    # long author lists stay fully readable instead of just getting cut off.
-    avtor_text = ", ".join(authors) if authors else ""
-    y_authors = int(21 * sy)
-    if avtor_text:
+    # Top row (authors left, place/year right) is vertically centered on the
+    # logo icon baked into the template so text and icon sit on one line.
+    icon_cy = ICON_CENTER_Y_REF * sy
+    small_ascent, small_descent = font_small.getmetrics()
+    y_top_row = int(icon_cy - (small_ascent + small_descent) / 2)
+
+    # Authors — top-left, abbreviated like the admin form and wrapped across
+    # multiple lines (not squeezed onto one line) so several authors never
+    # overlap the place/year text or the title. The font shrinks (down to a
+    # floor) before anything gets truncated, so long author lists stay fully
+    # readable instead of just getting cut off.
+    abbreviated = [_abbreviate_author(a) for a in authors if a.strip()]
+    # One token per author ("X. A. Raxmonjonov," …) so a name never breaks
+    # across lines between its initials and surname.
+    author_tokens = [
+        name + ("," if i < len(abbreviated) - 1 else "") for i, name in enumerate(abbreviated)
+    ]
+    if author_tokens:
         first_line_w = max(int(357 * sx) - joy_yil_w - int(30 * sx), int(60 * sx))
         rest_line_w = max_w
-        available_h = y_title - y_authors - int(6 * sy)
+        available_h = y_title - y_top_row - int(6 * sy)
 
         font_authors, author_lines, line_h_authors = _fit_authors(
             draw,
-            avtor_text,
+            author_tokens,
             str(ASSETS_DIR / "Gilroy-Light.ttf"),
             start_size=int(13 * sy),
             min_size=max(int(9 * sy), 8),
@@ -204,15 +300,17 @@ def generate_cover(
             available_h=available_h,
         )
         for i, line in enumerate(author_lines):
-            draw.text((int(20 * sx), y_authors + i * line_h_authors), line, font=font_authors, fill=(255, 255, 255))
+            draw.text((int(20 * sx), y_top_row + i * line_h_authors), line, font=font_authors, fill=(255, 255, 255))
 
-    # Country + Year — top-right (right-aligned, before logo area)
+    # Place + Year — top-right, right-aligned before the logo and vertically
+    # centered with it ("rm" anchor = right edge, vertical middle).
     if joy_yil:
-        draw.text((int(357 * sx) - joy_yil_w, y_authors), joy_yil, font=font_small, fill=(255, 255, 255))
+        draw.text((int(357 * sx), icon_cy), joy_yil, font=font_small, fill=(255, 255, 255), anchor="rm")
 
-    # Title — large, with word-wrap
-
-    lines = _wrap_text(draw, title, font_title, max_w)
+    # Title — large, word-wrapped, font size adapted to fit max 3 lines
+    font_title, lines, line_h = _fit_title(
+        draw, title, str(ASSETS_DIR / "Gilroy-Medium.ttf"), max_w, sy
+    )
     for i, line in enumerate(lines):
         draw.text((x_title, y_title + i * line_h), line, font=font_title, fill=(255, 255, 255))
 
