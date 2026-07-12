@@ -165,6 +165,11 @@ export interface CreateMaterialDto {
    * Omit (or send every page) to analyze the full document.
    */
   selectedPages?: number[];
+  /**
+   * Total page count from the page-prep render (deterministic). Stored on the
+   * material so "Sahifa soni" is accurate even if the AI fails to extract it.
+   */
+  pageCount?: number;
 }
 
 /**

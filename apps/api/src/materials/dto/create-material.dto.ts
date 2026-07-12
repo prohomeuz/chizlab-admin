@@ -57,4 +57,12 @@ export class CreateMaterialDto {
   @IsInt({ each: true })
   @Min(1, { each: true })
   selectedPages?: number[];
+
+  @ApiPropertyOptional({
+    description: 'Total document page count from the page-prep render (deterministic)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  pageCount?: number;
 }
