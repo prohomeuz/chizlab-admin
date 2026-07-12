@@ -36,7 +36,7 @@ At minimum, change the following before going live:
 | `GEMINI_API_KEY` | required — AI worker will not start without it |
 | `CORS_ORIGINS` | set to `https://admin.chizlab.uz` |
 | `PUBLIC_ALLOWED_ORIGINS` | hostnames allowed to call `/api/public/*` (defaults to `chizlab.uz,www.chizlab.uz,api.chizlab.uz`) |
-| `MINIO_PUBLIC_URL` | set to `https://admin.chizlab.uz/media/chizlab-media` |
+| `MINIO_PUBLIC_URL` | set to `https://media.chizlab.uz` (dedicated media subdomain, see §4a) |
 | `API_PORT` | set to `8005` (this server's reserved port) |
 | `ADMIN_PORT` | set to `3005` (this server's reserved port) |
 
@@ -110,6 +110,68 @@ sudo ln -s /etc/nginx/sites-available/admin.chizlab.uz /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d admin.chizlab.uz
 ```
+
+---
+
+## 4a. Media subdomain (`media.chizlab.uz`)
+
+Media links are now served from a dedicated subdomain that maps the MinIO
+bucket to its root, so a file lives at `https://media.chizlab.uz/<uuid>.pdf`
+(instead of `https://admin.chizlab.uz/media/chizlab-media/<uuid>.pdf`).
+
+**Order matters — do these BEFORE flipping `MINIO_PUBLIC_URL` / running the
+migration, or existing links will 404:**
+
+1. **DNS:** add an `A` record `media.chizlab.uz → <server IP>`.
+2. **Nginx** server block:
+
+```nginx
+server {
+    listen 80;
+    server_name media.chizlab.uz;
+
+    client_max_body_size 100M;
+
+    # Map the subdomain root to the MinIO bucket (note both trailing slashes):
+    #   media.chizlab.uz/<uuid>.pdf  ->  127.0.0.1:9100/chizlab-media/<uuid>.pdf
+    location / {
+        proxy_pass http://127.0.0.1:9100/chizlab-media/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/media.chizlab.uz /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d media.chizlab.uz
+```
+
+3. **Verify** the bucket is reachable through the new host (must return `200`):
+
+```bash
+curl -I https://media.chizlab.uz/<some-existing-uuid>.pdf
+```
+
+4. Set `MINIO_PUBLIC_URL=https://media.chizlab.uz` and redeploy the API + AI
+   worker. **New** uploads now use the new URL.
+5. **Migrate existing rows** so old materials point at the new host too
+   (the objects are unchanged — only the URL prefix is rewritten):
+
+```bash
+docker compose -f infra/docker-compose.yml exec api npm run migration:run
+```
+
+   The `MigrateMediaUrlDomain` migration rewrites
+   `https://admin.chizlab.uz/media/chizlab-media/…` → `https://media.chizlab.uz/…`
+   for `media_url` and `cover_url`.
+
+> Keep the old `location /media/` block on `admin.chizlab.uz` for a while as a
+> fallback; both hosts serve the same bucket, so nothing breaks during the
+> transition.
 
 ### `api.chizlab.uz` (public read-only API, separate subdomain)
 
