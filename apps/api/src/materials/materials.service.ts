@@ -31,6 +31,7 @@ export class MaterialsService {
       mediaUrl: dto.mediaUrl ?? null,
       tags: dto.tags ?? [],
       authors: [],
+      pageCount: dto.pageCount ?? null,
       status: MaterialStatus.PENDING,
       isReady: false,
     });
@@ -253,7 +254,11 @@ export class MaterialsService {
       if (fields.language != null) material.language = fields.language;
       if (fields.publishYear != null) material.publishYear = fields.publishYear;
       if (fields.country != null) material.country = fields.country;
-      if (fields.pageCount != null) material.pageCount = fields.pageCount;
+      // Page count from the page-prep render (set at create) is authoritative and always
+      // accurate — only let the AI's extracted value fill it in when it wasn't already set.
+      if (fields.pageCount != null && material.pageCount == null) {
+        material.pageCount = fields.pageCount;
+      }
       if (fields.suggestedCategoryId != null) {
         material.categoryId = fields.suggestedCategoryId;
       }

@@ -8,6 +8,7 @@ import { Button } from '../components/Button';
 import { StatusBadge } from '../components/StatusBadge';
 import { Spinner } from '../components/Spinner';
 import { ConfirmModal } from '../components/Modal';
+import { MaterialDetailModal } from '../components/MaterialDetailModal';
 import { useToastContext } from '../context/ToastContext';
 import type { Material, MaterialStatus, MaterialType, AdminMaterialsQuery } from '@contracts/index';
 
@@ -113,6 +114,7 @@ export function MaterialsListPage() {
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(10);
   const [deleteTarget, setDeleteTarget] = useState<Material | null>(null);
+  const [detailTarget, setDetailTarget] = useState<Material | null>(null);
   const debouncedSearch = useDebouncedValue(search, 150);
   const hasActiveFilters = Boolean(categoryId || status || materialType);
 
@@ -158,19 +160,27 @@ export function MaterialsListPage() {
 
   const categoryMap = new Map((categories ?? []).map((c) => [c.id, c.name]));
 
+  // Distinguish single / double / triple click on a row. Each click resets a short timer
+  // and records the latest click count; when the timer fires we act on the final count:
+  //   1 click  → open the detail modal
+  //   2 clicks → edit page
+  //   3 clicks → delete confirmation
   function handleRowClick(e: React.MouseEvent, mat: Material) {
-    if (e.detail === 2) {
-      clickTimerRef.current = setTimeout(() => {
-        navigate(`/materials/${mat.id}/edit`);
-      }, 220);
-    } else if (e.detail === 3) {
-      if (clickTimerRef.current) {
-        clearTimeout(clickTimerRef.current);
-        clickTimerRef.current = null;
-      }
-      setDeleteTarget(mat);
-    }
+    const clicks = e.detail;
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = setTimeout(() => {
+      clickTimerRef.current = null;
+      if (clicks >= 3) setDeleteTarget(mat);
+      else if (clicks === 2) navigate(`/materials/${mat.id}/edit`);
+      else setDetailTarget(mat);
+    }, 260);
   }
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    };
+  }, []);
 
   return (
     <Layout
@@ -446,6 +456,17 @@ export function MaterialsListPage() {
           </div>
         )}
       </div>
+
+      <MaterialDetailModal
+        material={detailTarget}
+        categoryName={
+          detailTarget?.categoryId ? categoryMap.get(detailTarget.categoryId) : undefined
+        }
+        onClose={() => setDetailTarget(null)}
+        onEdit={() => {
+          if (detailTarget) navigate(`/materials/${detailTarget.id}/edit`);
+        }}
+      />
 
       <ConfirmModal
         open={deleteTarget !== null}
