@@ -1302,6 +1302,11 @@ export function MaterialFormPage() {
                   alt="Muqova"
                   className="w-full rounded-lg object-cover shadow-card"
                 />
+              ) : aiLoading ? (
+                /* AI hali ishlayapti — muqova tayyor bo'lguncha skelet */
+                <div className="skeleton-shimmer rounded-lg border border-border flex items-center justify-center w-full aspect-[3/4]">
+                  <p className="text-sm text-text-muted">Muqova tayyorlanmoqda...</p>
+                </div>
               ) : (
                 <div className="bg-bg-elevated rounded-lg border border-dashed border-border flex items-center justify-center min-h-[200px]">
                   <p className="text-sm text-text-muted">Muqova mavjud emas</p>
