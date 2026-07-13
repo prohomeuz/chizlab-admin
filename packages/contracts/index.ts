@@ -61,6 +61,8 @@ export interface Material {
   language: string | null;
   /** Publication year. AI-fillable. */
   publishYear: number | null;
+  /** City/region of publication (e.g. "Toshkent"). AI-fillable. */
+  publishPlace: string | null;
   /** Country of publication. AI-fillable. */
   country: string | null;
   /** Page count. AI-fillable. */
@@ -187,6 +189,7 @@ export interface UpdateMaterialDto {
   authors?: string[];
   language?: string | null;
   publishYear?: number | null;
+  publishPlace?: string | null;
   country?: string | null;
   pageCount?: number | null;
   status?: MaterialStatus;
@@ -312,6 +315,8 @@ export interface AiResultCallback {
   language?: string | null;
   /** AI-detected publication year. Present when success=true. */
   publishYear?: number | null;
+  /** AI-detected city/region of publication. Present when success=true. */
+  publishPlace?: string | null;
   /** AI-detected country. Present when success=true. */
   country?: string | null;
   /** AI-detected page count. Present when success=true. */

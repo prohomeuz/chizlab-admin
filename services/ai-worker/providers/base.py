@@ -19,6 +19,7 @@ class AnalysisResult(BaseModel):
     authors: list[str] = []
     language: str | None = None
     publish_year: int | None = None
+    publish_place: str | None = None
     country: str | None = None
     page_count: int | None = None
     suggested_category_name: str | None = None

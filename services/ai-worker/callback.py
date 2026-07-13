@@ -23,6 +23,7 @@ async def post_success(
     authors: list[str],
     language: str | None,
     publish_year: int | None,
+    publish_place: str | None,
     country: str | None,
     page_count: int | None,
     suggested_category_id: str | None,
@@ -43,6 +44,7 @@ async def post_success(
         "authors": authors,
         "language": language,
         "publishYear": publish_year,
+        "publishPlace": publish_place,
         "country": country,
         "pageCount": page_count,
         "suggestedCategoryId": suggested_category_id,
@@ -63,6 +65,25 @@ async def post_failure(material_id: str, error_message: str) -> None:
         "error": error_message,
     }
     await _send(payload)
+
+
+async def post_cover_result(
+    material_id: str,
+    success: bool,
+    cover_url: str | None = None,
+    error: str | None = None,
+) -> None:
+    """Notify the NestJS API that a cover regeneration finished (or failed)."""
+    payload: dict[str, Any] = {
+        "materialId": material_id,
+        "success": success,
+        "coverUrl": cover_url,
+        "error": error,
+    }
+    # Same internal endpoint family as ai-result — derive the URL so no new
+    # env var is needed in deployments.
+    base = get_settings().internal_callback_url.rsplit("/", 1)[0]
+    await _send(payload, url=f"{base}/cover-result")
 
 
 async def post_page_prep_result(

@@ -121,6 +121,16 @@ export class MaterialsService {
 
     const hadMediaUrl = material.mediaUrl;
 
+    // Snapshot the fields drawn on the generated cover — if any of them
+    // change, the cover is regenerated so it always matches the form.
+    const coverFieldsBefore = JSON.stringify([
+      material.title,
+      material.authors,
+      material.publishYear,
+      material.publishPlace,
+      material.country,
+    ]);
+
     if (dto.title !== undefined) material.title = dto.title;
     if (dto.description !== undefined) material.description = dto.description;
     if (dto.blurb !== undefined) material.blurb = dto.blurb;
@@ -131,6 +141,7 @@ export class MaterialsService {
     if (dto.authors !== undefined) material.authors = dto.authors;
     if (dto.language !== undefined) material.language = dto.language;
     if (dto.publishYear !== undefined) material.publishYear = dto.publishYear;
+    if (dto.publishPlace !== undefined) material.publishPlace = dto.publishPlace;
     if (dto.country !== undefined) material.country = dto.country;
     if (dto.pageCount !== undefined) material.pageCount = dto.pageCount;
     if (dto.status !== undefined) material.status = dto.status;
@@ -145,6 +156,17 @@ export class MaterialsService {
 
     if (dto.mediaUrl && dto.mediaUrl !== hadMediaUrl) {
       this.enqueueAiJob(saved.id, dto.mediaUrl);
+    } else {
+      const coverFieldsAfter = JSON.stringify([
+        saved.title,
+        saved.authors,
+        saved.publishYear,
+        saved.publishPlace,
+        saved.country,
+      ]);
+      if (coverFieldsAfter !== coverFieldsBefore && saved.title) {
+        this.enqueueCoverJob(saved);
+      }
     }
 
     return saved;
@@ -233,6 +255,7 @@ export class MaterialsService {
       authors?: string[] | null;
       language?: string | null;
       publishYear?: number | null;
+      publishPlace?: string | null;
       country?: string | null;
       pageCount?: number | null;
       suggestedCategoryId?: string | null;
@@ -253,6 +276,7 @@ export class MaterialsService {
       if (fields.authors != null) material.authors = fields.authors;
       if (fields.language != null) material.language = fields.language;
       if (fields.publishYear != null) material.publishYear = fields.publishYear;
+      if (fields.publishPlace != null) material.publishPlace = fields.publishPlace;
       if (fields.country != null) material.country = fields.country;
       // Page count from the page-prep render (set at create) is authoritative and always
       // accurate — only let the AI's extracted value fill it in when it wasn't already set.
@@ -276,12 +300,43 @@ export class MaterialsService {
     return this.materialRepo.save(material);
   }
 
+  /** Cover regeneration callback — updates only the cover URL. */
+  async applyCoverResult(
+    materialId: string,
+    success: boolean,
+    coverUrl: string | null,
+  ): Promise<Material> {
+    const material = await this.materialRepo.findOne({ where: { id: materialId } });
+    if (!material) {
+      throw new NotFoundException(`Material ${materialId} not found`);
+    }
+    if (success && coverUrl) {
+      material.coverUrl = coverUrl;
+      return this.materialRepo.save(material);
+    }
+    return material;
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
 
   async getProgress(materialId: string): Promise<number> {
     return this.aiJobService.getProgress(materialId);
+  }
+
+  private enqueueCoverJob(material: Material): void {
+    this.aiJobService
+      .enqueueCover(material.id, {
+        title: material.title ?? '',
+        authors: material.authors ?? [],
+        publishYear: material.publishYear,
+        publishPlace: material.publishPlace,
+        country: material.country,
+      })
+      .catch((err: unknown) => {
+        this.logger.error(`Failed to enqueue cover job for material=${material.id}`, err);
+      });
   }
 
   private enqueueAiJob(

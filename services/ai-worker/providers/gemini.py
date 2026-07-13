@@ -31,6 +31,7 @@ Analyze the provided educational material and return a JSON object with these fi
   "authors": ["Familiya Ism Otashorasi"],
   "language": "O'zbek",
   "publish_year": 2023,
+  "publish_place": "Toshkent",
   "country": "O'zbekiston",
   "page_count": 148,
   "suggested_category_name": "Best matching academic category (e.g. Matematika, Tarix, Informatika)"
@@ -46,6 +47,7 @@ Rules:
 - country: return EXACTLY ONE value from this list — O'zbekiston, Rossiya, AQSH, Buyuk Britaniya, Germaniya, Fransiya, Xitoy, Yaponiya, Janubiy Koreya, Hindiston, Turkiya, Qozog'iston, Qirg'iziston, Tojikiston, Turkmaniston, Ukraina, Belarus, Ozarbayjon, Gruziya, Kanada, Avstriya, Italiya. null if not found.
 - blurb: one short, natural sentence in Uzbek — write like recommending the book to a classmate, not like an advertisement.
 - publish_year: integer year (e.g. 2023) or null if not found.
+- publish_place: the city/region where the material was published, exactly as printed on the title page or imprint (e.g. "Toshkent — 2016" → "Toshkent"). Transliterate to Uzbek Latin script if printed in Cyrillic ("Тошкент" → "Toshkent"). Return ONLY the place name without the year. null if not found.
 - page_count: integer or null if not determinable.
 - suggested_category_name: single category name, or null if unclear.
 - Return ONLY the raw JSON object — no markdown fences, no explanation.
@@ -205,6 +207,7 @@ class GeminiProvider:
             authors=authors,
             language=data.get("language") or None,
             publish_year=publish_year,
+            publish_place=(str(data.get("publish_place")).strip() or None) if data.get("publish_place") else None,
             country=data.get("country") or None,
             page_count=page_count,
             suggested_category_name=data.get("suggested_category_name") or None,

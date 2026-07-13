@@ -1,6 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { AiResultDto } from './dto/ai-result.dto';
+import { CoverResultDto } from './dto/cover-result.dto';
 import { PagePrepResultDto } from './dto/page-prep-result.dto';
 import { InternalSecretGuard } from './internal-secret.guard';
 import { InternalService } from './internal.service';
@@ -34,5 +35,15 @@ export class InternalController {
   @ApiResponse({ status: 401, description: 'Invalid internal secret' })
   handlePagePrepResult(@Body() dto: PagePrepResultDto): Promise<{ ok: boolean }> {
     return this.internalService.handlePagePrepResult(dto);
+  }
+
+  @Post('cover-result')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ operationId: 'internalCoverResult', summary: 'Cover regeneration result callback (internal)' })
+  @ApiResponse({ status: 200, description: 'Callback processed' })
+  @ApiResponse({ status: 400, description: 'Invalid payload' })
+  @ApiResponse({ status: 401, description: 'Invalid internal secret' })
+  handleCoverResult(@Body() dto: CoverResultDto): Promise<{ ok: boolean }> {
+    return this.internalService.handleCoverResult(dto);
   }
 }

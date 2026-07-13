@@ -60,6 +60,11 @@ export class AiResultDto {
   @Max(2100)
   publishYear?: number | null;
 
+  @ApiPropertyOptional({ nullable: true, description: 'City/region of publication (e.g. "Toshkent")' })
+  @IsOptional()
+  @IsString()
+  publishPlace?: string | null;
+
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()

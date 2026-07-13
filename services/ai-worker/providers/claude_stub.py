@@ -36,6 +36,7 @@ Analyze the provided educational material and return a JSON object with these fi
   "authors": ["Author Name 1", "Author Name 2"],
   "language": "Language the document is written in (e.g. O'zbek, Rus, Ingliz)",
   "publish_year": 2023,
+  "publish_place": "Toshkent",
   "country": "Country of publication (e.g. O'zbekiston, Rossiya)",
   "page_count": 148,
   "suggested_category_name": "Best matching academic category (e.g. Matematika, Tarix, Informatika)"
@@ -47,6 +48,7 @@ Rules:
 - authors: extract from the document cover/header; empty array [] if not found.
 - language: detect from the document's content language; use Uzbek name of language.
 - publish_year: integer year (e.g. 2023) or null if not found.
+- publish_place: city/region where the material was published, as printed on the title page (e.g. "Toshkent — 2016" -> "Toshkent"), transliterated to Uzbek Latin script; null if not found.
 - country: null if not found.
 - page_count: integer or null if not determinable.
 - suggested_category_name: single category name, or null if unclear.
@@ -159,6 +161,7 @@ def _parse_response(raw_text: str) -> AnalysisResult:
         authors=authors,
         language=data.get("language") or None,
         publish_year=publish_year,
+        publish_place=(str(data.get("publish_place")).strip() or None) if data.get("publish_place") else None,
         country=data.get("country") or None,
         page_count=page_count,
         suggested_category_name=data.get("suggested_category_name") or None,

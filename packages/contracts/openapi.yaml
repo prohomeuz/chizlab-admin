@@ -140,6 +140,10 @@ components:
           minimum: 1900
           maximum: 2100
           description: Publication year. AI-fillable.
+        publishPlace:
+          type: string
+          nullable: true
+          description: City/region of publication (e.g. "Toshkent"). AI-fillable.
         country:
           type: string
           nullable: true

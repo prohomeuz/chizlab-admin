@@ -26,6 +26,7 @@ from config import get_settings
 from providers.base import AIProvider, AnalysisResult
 from providers.claude_stub import ClaudeProvider
 from providers.gemini import GeminiProvider
+from providers.mock_demo import MockDemoProvider
 from providers.openai_stub import OpenAIProvider
 
 logging.basicConfig(
@@ -38,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 AI_JOBS_KEY = "chizlab:ai:pending"
 PAGE_PREP_JOBS_KEY = "chizlab:pages:pending"
+COVER_JOBS_KEY = "chizlab:cover:pending"
 MAX_RETRIES = 3
 PROGRESS_TTL = 3600  # seconds
 
@@ -76,6 +78,8 @@ def get_provider(settings=None) -> AIProvider:
         return OpenAIProvider(api_key=settings.openai_api_key)
     elif provider_name == "claude":
         return ClaudeProvider(api_key=settings.anthropic_api_key)
+    elif provider_name == "mock_demo":
+        return MockDemoProvider()
     else:
         raise ValueError(f"Unknown AI_PROVIDER: '{provider_name}'")
 
@@ -162,6 +166,7 @@ async def process_job(
                     title=result.title or "",
                     authors=result.authors or [],
                     publish_year=result.publish_year,
+                    publish_place=result.publish_place,
                     country=result.country,
                 )
                 cover_url = await storage.upload_cover(
@@ -184,6 +189,7 @@ async def process_job(
                 authors=result.authors,
                 language=result.language,
                 publish_year=result.publish_year,
+                publish_place=result.publish_place,
                 country=result.country,
                 page_count=result.page_count,
                 suggested_category_id=None,
@@ -212,6 +218,69 @@ async def process_job(
         await callback.post_failure(material_id=material_id, error_message=error_msg)
     except Exception as cb_exc:  # noqa: BLE001
         logger.error("Callback post_failure also failed: %s", cb_exc)
+
+
+async def process_cover_job(
+    material_id: str,
+    title: str,
+    authors: list[str],
+    publish_year: int | None,
+    publish_place: str | None,
+    country: str | None,
+) -> None:
+    """Regenerate a material's cover from its current (admin-edited) fields
+    so the cover always matches what the form shows."""
+    import time
+
+    logger.info("Regenerating cover: material=%s title=%r", material_id, title)
+    try:
+        cover_bytes = cover_generator.generate_cover(
+            title=title,
+            authors=authors,
+            publish_year=publish_year,
+            publish_place=publish_place,
+            country=country,
+        )
+        # Versioned key — a fresh URL so browsers don't keep showing the
+        # cached previous cover.
+        cover_url = await storage.upload_cover(
+            cover_bytes,
+            f"cover-{material_id}-{int(time.time())}.jpg",
+        )
+        await callback.post_cover_result(material_id, True, cover_url)
+        logger.info("Cover regenerated: %s", cover_url)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Cover regeneration failed for material=%s: %s", material_id, exc)
+        try:
+            await callback.post_cover_result(material_id, False, None, str(exc))
+        except Exception as cb_exc:  # noqa: BLE001
+            logger.error("Cover-result callback also failed: %s", cb_exc)
+
+
+async def _run_cover_jobs_loop(
+    redis_client: aioredis.Redis, stop_event: asyncio.Event
+) -> None:
+    while not stop_event.is_set():
+        result = await redis_client.brpop(COVER_JOBS_KEY, timeout=2)
+        if result is None:
+            continue
+
+        _, raw = result
+        try:
+            job = json.loads(raw)
+            material_id: str = job["materialId"]
+            title: str = job.get("title") or ""
+            authors: list[str] = job.get("authors") or []
+            publish_year: int | None = job.get("publishYear")
+            publish_place: str | None = job.get("publishPlace")
+            country: str | None = job.get("country")
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error("Malformed cover job payload: %r — %s", raw, e)
+            continue
+
+        await process_cover_job(
+            material_id, title, authors, publish_year, publish_place, country
+        )
 
 
 async def _run_ai_jobs_loop(
@@ -262,9 +331,10 @@ async def main() -> None:
 
     redis_client = await aioredis.from_url(settings.redis_url)
     logger.info(
-        "Worker started. Listening on Redis lists '%s' and '%s' …",
+        "Worker started. Listening on Redis lists '%s', '%s' and '%s' …",
         AI_JOBS_KEY,
         PAGE_PREP_JOBS_KEY,
+        COVER_JOBS_KEY,
     )
 
     loop = asyncio.get_running_loop()
@@ -275,12 +345,18 @@ async def main() -> None:
         stop_event.set()
 
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _handle_signal)
+        try:
+            loop.add_signal_handler(sig, _handle_signal)
+        except NotImplementedError:
+            # Windows event loops don't implement add_signal_handler —
+            # fall back to plain synchronous signal handlers for local dev.
+            signal.signal(sig, lambda *_: _handle_signal())
 
     try:
         await asyncio.gather(
             _run_ai_jobs_loop(redis_client, provider, stop_event),
             _run_page_prep_jobs_loop(redis_client, stop_event),
+            _run_cover_jobs_loop(redis_client, stop_event),
         )
     finally:
         await redis_client.aclose()

@@ -123,6 +123,7 @@ const formSchema = z.object({
   authors: z.array(z.string()),
   language: z.string().nullable().optional(),
   publishYear: z.number().int().min(1900).max(2100).nullable().optional(),
+  publishPlace: z.string().nullable().optional(),
   country: z.string().nullable().optional(),
   pageCount: z.number().int().min(1).nullable().optional(),
   status: z.enum(['pending', 'draft', 'ready'] as const),
@@ -222,6 +223,7 @@ function DropzoneUpload({
   readOnly = false,
   disabled = false,
   disabledHint,
+  onUploadingChange,
 }: {
   value: string | null
   onChange: (url: string | null) => void
@@ -230,6 +232,7 @@ function DropzoneUpload({
   readOnly?: boolean
   disabled?: boolean
   disabledHint?: string
+  onUploadingChange?: (uploading: boolean) => void
 }) {
   const [progress, setProgress] = useState<number | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -245,6 +248,10 @@ function DropzoneUpload({
       setFadeVisible(false)
     }
   }, [value])
+
+  useEffect(() => {
+    onUploadingChange?.(uploading)
+  }, [uploading, onUploadingChange])
 
   const handleFile = async (file: File) => {
     if (disabled) return
@@ -727,6 +734,7 @@ export function MaterialFormPage() {
       authors: [],
       language: '',
       publishYear: null,
+      publishPlace: '',
       country: '',
       pageCount: null,
       status: 'pending',
@@ -738,6 +746,10 @@ export function MaterialFormPage() {
   const watchedCategoryId = watch('categoryId')
   const watchedMediaUrl = watch('mediaUrl')
   const canUpload = Boolean(watchedMaterialType) && Boolean(watchedCategoryId)
+
+  // True while the media file is uploading — blocks the primary action so
+  // the admin can't advance before the file finishes uploading.
+  const [mediaUploading, setMediaUploading] = useState(false)
 
   // ── Page-selection: the inline panel below the dropzone prepares page
   // thumbnails as soon as a file is uploaded. Saving is blocked until the
@@ -765,6 +777,7 @@ export function MaterialFormPage() {
         authors: (material.authors ?? []).map(abbreviateAuthor),
         language: material.language ?? '',
         publishYear: material.publishYear ?? null,
+        publishPlace: material.publishPlace ?? '',
         country: material.country ?? '',
         pageCount: material.pageCount ?? null,
         status: material.status,
@@ -881,6 +894,7 @@ export function MaterialFormPage() {
         authors: values.authors,
         language: values.language || undefined,
         publishYear: values.publishYear ?? undefined,
+        publishPlace: values.publishPlace || undefined,
         country: values.country || undefined,
         pageCount: values.pageCount ?? undefined,
         // Saqlash = yakuniy tasdiq: material shu yerda READY bo'ladi
@@ -901,7 +915,7 @@ export function MaterialFormPage() {
     if (isEdit) {
       await updateMutation.mutateAsync(values)
     } else {
-      if (pagePrepPending) return
+      if (pagePrepPending || mediaUploading) return
       await createMutation.mutateAsync(values)
     }
   }
@@ -932,7 +946,7 @@ export function MaterialFormPage() {
           <Button
             size="sm"
             loading={isBusy}
-            disabled={pagePrepPending}
+            disabled={pagePrepPending || mediaUploading}
             onClick={() => {
               void handleSubmit(onSubmit)()
             }}
@@ -1138,6 +1152,24 @@ export function MaterialFormPage() {
                   />
 
                   <Controller
+                    name="publishPlace"
+                    control={control}
+                    render={({ field }) => (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-sm font-medium text-text-primary">
+                          Nashr etilgan joy
+                        </label>
+                        <input
+                          {...field}
+                          value={field.value ?? ''}
+                          placeholder={aiLoading ? "Ma'lumot olinmoqda..." : 'Toshkent'}
+                          className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                        />
+                      </div>
+                    )}
+                  />
+
+                  <Controller
                     name="pageCount"
                     control={control}
                     render={({ field }) => (
@@ -1292,6 +1324,11 @@ export function MaterialFormPage() {
                   alt="Muqova"
                   className="w-full rounded-lg object-cover shadow-card"
                 />
+              ) : aiLoading ? (
+                /* AI hali ishlayapti — muqova tayyor bo'lguncha skelet */
+                <div className="skeleton-shimmer rounded-lg border border-border flex items-center justify-center w-full aspect-[3/4]">
+                  <p className="text-sm text-text-muted">Muqova tayyorlanmoqda...</p>
+                </div>
               ) : (
                 <div className="bg-bg-elevated rounded-lg border border-dashed border-border flex items-center justify-center min-h-[200px]">
                   <p className="text-sm text-text-muted">Muqova mavjud emas</p>
@@ -1320,6 +1357,7 @@ export function MaterialFormPage() {
                       readOnly={isEdit}
                       disabled={!isEdit && !canUpload}
                       disabledHint="Fayl yuklashdan oldin Material turi va Kategoriyani tanlang"
+                      onUploadingChange={setMediaUploading}
                     />
                   )}
                 />

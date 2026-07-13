@@ -5,6 +5,7 @@ import { Category } from '../categories/category.entity';
 import { MaterialsService } from '../materials/materials.service';
 import { PagePrepService } from '../materials/page-prep.service';
 import { AiResultDto } from './dto/ai-result.dto';
+import { CoverResultDto } from './dto/cover-result.dto';
 import { PagePrepResultDto } from './dto/page-prep-result.dto';
 
 @Injectable()
@@ -35,6 +36,7 @@ export class InternalService {
       authors: dto.authors,
       language: dto.language,
       publishYear: dto.publishYear,
+      publishPlace: dto.publishPlace,
       country: dto.country,
       pageCount: dto.pageCount,
       suggestedCategoryId: validatedCategoryId,
@@ -42,6 +44,11 @@ export class InternalService {
       error: dto.error,
     });
 
+    return { ok: true };
+  }
+
+  async handleCoverResult(dto: CoverResultDto): Promise<{ ok: boolean }> {
+    await this.materialsService.applyCoverResult(dto.materialId, dto.success, dto.coverUrl ?? null);
     return { ok: true };
   }
 
