@@ -26,6 +26,7 @@ from config import get_settings
 from providers.base import AIProvider, AnalysisResult
 from providers.claude_stub import ClaudeProvider
 from providers.gemini import GeminiProvider
+from providers.mock_demo import MockDemoProvider
 from providers.openai_stub import OpenAIProvider
 
 logging.basicConfig(
@@ -77,6 +78,8 @@ def get_provider(settings=None) -> AIProvider:
         return OpenAIProvider(api_key=settings.openai_api_key)
     elif provider_name == "claude":
         return ClaudeProvider(api_key=settings.anthropic_api_key)
+    elif provider_name == "mock_demo":
+        return MockDemoProvider()
     else:
         raise ValueError(f"Unknown AI_PROVIDER: '{provider_name}'")
 
@@ -342,7 +345,12 @@ async def main() -> None:
         stop_event.set()
 
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _handle_signal)
+        try:
+            loop.add_signal_handler(sig, _handle_signal)
+        except NotImplementedError:
+            # Windows event loops don't implement add_signal_handler —
+            # fall back to plain synchronous signal handlers for local dev.
+            signal.signal(sig, lambda *_: _handle_signal())
 
     try:
         await asyncio.gather(
