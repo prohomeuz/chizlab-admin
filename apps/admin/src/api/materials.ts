@@ -44,6 +44,27 @@ export async function getMaterialProgress(id: string): Promise<{ progress: numbe
   return res.data;
 }
 
+/** Fields drawn on the generated cover — payload for the live preview. */
+export interface CoverPreviewFields {
+  title?: string;
+  authors?: string[];
+  publishYear?: number | null;
+  publishPlace?: string | null;
+  country?: string | null;
+}
+
+/** Render a live cover preview (JPEG blob) from the current form fields. */
+export async function getCoverPreview(
+  fields: CoverPreviewFields,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const res = await apiClient.post<Blob>('/api/admin/materials/cover-preview', fields, {
+    responseType: 'blob',
+    signal,
+  });
+  return res.data;
+}
+
 export async function preparePages(mediaUrl: string): Promise<PreparePagesResponse> {
   const res = await apiClient.post<PreparePagesResponse>('/api/admin/materials/prepare-pages', {
     mediaUrl,

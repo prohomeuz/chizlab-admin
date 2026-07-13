@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Material, MaterialStatus } from './material.entity';
+import { CoverPreviewDto } from './dto/cover-preview.dto';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
 import { ListMaterialsDto } from './dto/list-materials.dto';
@@ -323,6 +324,17 @@ export class MaterialsService {
 
   async getProgress(materialId: string): Promise<number> {
     return this.aiJobService.getProgress(materialId);
+  }
+
+  /** Live cover preview for the admin form — rendered by the worker, not persisted. */
+  async renderCoverPreview(dto: CoverPreviewDto): Promise<Buffer | null> {
+    return this.aiJobService.renderCoverPreview({
+      title: dto.title ?? '',
+      authors: dto.authors ?? [],
+      publishYear: dto.publishYear ?? null,
+      publishPlace: dto.publishPlace ?? null,
+      country: dto.country ?? null,
+    });
   }
 
   private enqueueCoverJob(material: Material): void {

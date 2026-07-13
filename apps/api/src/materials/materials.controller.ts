@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -10,6 +11,8 @@ import {
   Post,
   Put,
   Query,
+  ServiceUnavailableException,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -19,6 +22,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CoverPreviewDto } from './dto/cover-preview.dto';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { ListMaterialsDto } from './dto/list-materials.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
@@ -46,6 +50,24 @@ export class MaterialsController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   create(@Body() dto: CreateMaterialDto) {
     return this.materialsService.create(dto);
+  }
+
+  @Post('cover-preview')
+  @HttpCode(HttpStatus.OK)
+  @Header('Content-Type', 'image/jpeg')
+  @ApiOperation({
+    operationId: 'adminCoverPreview',
+    summary: 'Render a live cover preview from form fields (admin)',
+  })
+  @ApiResponse({ status: 200, description: 'JPEG cover preview' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 503, description: 'Preview renderer unavailable' })
+  async coverPreview(@Body() dto: CoverPreviewDto): Promise<StreamableFile> {
+    const jpeg = await this.materialsService.renderCoverPreview(dto);
+    if (!jpeg) {
+      throw new ServiceUnavailableException('Cover preview is not available right now');
+    }
+    return new StreamableFile(jpeg);
   }
 
   @Get(':id/progress')

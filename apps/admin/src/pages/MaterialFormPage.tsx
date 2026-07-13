@@ -8,14 +8,17 @@ import { z } from 'zod'
 import { getCategories } from '../api/categories'
 import {
   createMaterial,
+  getCoverPreview,
   getMaterial,
   getMaterialProgress,
   updateMaterial,
   uploadMedia,
+  type CoverPreviewFields,
 } from '../api/materials'
 import { Button } from '../components/Button'
 import { Layout } from '../components/Layout'
 import { PageSelectionPanel } from '../components/PageSelectionPanel'
+import { StatusSelect } from '../components/StatusSelect'
 import { useToastContext } from '../context/ToastContext'
 
 // ---------------------------------------------------------------------------
@@ -136,43 +139,35 @@ type FormValues = z.infer<typeof formSchema>
 
 function makeSchema(requireMedia: boolean) {
   return formSchema.superRefine((data, ctx) => {
-    if (requireMedia && !data.mediaUrl) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Media fayl majburiy',
-        path: ['mediaUrl'],
-      })
-    }
-    if (requireMedia && !data.materialType) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Material turi majburiy',
-        path: ['materialType'],
-      })
-    }
-    if (requireMedia && !data.categoryId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Kategoriya majburiy',
-        path: ['categoryId'],
-      })
-    }
-    // Tags min/max only in edit mode (AI fills them on create)
-    if (!requireMedia) {
-      if (data.tags.length < 4) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Kamida 4 ta kalit so'z",
-          path: ['tags'],
-        })
-      }
-      if (data.tags.length > 6) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Ko'pi bilan 6 ta kalit so'z",
-          path: ['tags'],
-        })
-      }
+    const require = (path: keyof FormValues, message: string) =>
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: [path] })
+
+    if (requireMedia) {
+      // CREATE mode — only the minimal trio is filled by the admin
+      if (!data.mediaUrl) require('mediaUrl', 'Media fayl majburiy')
+      if (!data.materialType) require('materialType', 'Material turi majburiy')
+      if (!data.categoryId) require('categoryId', 'Kategoriya majburiy')
+    } else {
+      // EDIT mode = yakuniy tasdiq (material READY bo'ladi): AI to'ldira
+      // olmagan yoki o'chirib yuborilgan maydon bo'sh qolsa saqlash
+      // bloklanadi — bo'sh maydon qizil belgilanib, sababi ko'rsatiladi.
+      if (!data.title?.trim()) require('title', "To'ldirilishi shart")
+      if (!data.blurb?.trim()) require('blurb', "To'ldirilishi shart")
+      if (data.authors.length === 0) require('authors', "Kamida 1 ta muallif kiritilishi shart")
+      // Til/Davlat uchun: qiymat ro'yxatdagi variantlardan biri bo'lishi shart.
+      // AI xato qiymat qo'ysa (masalan davlatga "Toshkent"), select uni ko'rsata
+      // olmaydi — bo'sh ko'rinadi — shuning uchun a'zolikni ham tekshiramiz.
+      if (!data.language || !(LANGUAGES as readonly string[]).includes(data.language))
+        require('language', 'Tanlanishi shart')
+      if (data.publishYear == null) require('publishYear', 'Tanlanishi shart')
+      if (!data.publishPlace?.trim()) require('publishPlace', "To'ldirilishi shart")
+      if (!data.country || !(COUNTRIES as readonly string[]).includes(data.country))
+        require('country', 'Tanlanishi shart')
+      if (data.pageCount == null) require('pageCount', "To'ldirilishi shart")
+      if (!data.materialType) require('materialType', 'Tanlanishi shart')
+      if (!data.categoryId) require('categoryId', 'Tanlanishi shart')
+      if (data.tags.length < 4) require('tags', "Kamida 4 ta kalit so'z kiritilishi shart")
+      if (data.tags.length > 6) require('tags', "Ko'pi bilan 6 ta kalit so'z")
     }
   })
 }
@@ -633,6 +628,7 @@ function TagInput({
     <div className="flex flex-col gap-1">
       <FieldLabel>{label}</FieldLabel>
       <div
+        aria-invalid={error ? true : undefined}
         className={`flex flex-wrap gap-1.5 items-center bg-bg-elevated border-2 rounded-md px-3 py-2 min-h-[44px] focus-within:border-focus transition-all ${
           error ? 'border-[#9b2c2c]' : 'border-border'
         }`}
@@ -775,10 +771,19 @@ export function MaterialFormPage() {
         blurb: material.blurb ?? '',
         tags: material.tags ?? [],
         authors: (material.authors ?? []).map(abbreviateAuthor),
-        language: material.language ?? '',
+        // Til/Davlat ro'yxatda bo'lmagan qiymat bilan kelsa (AI xatosi) bo'shga
+        // tushiramiz — shunda select ko'rsatgani (bo'sh) bilan haqiqiy qiymat mos
+        // keladi va saqlashda majburiy tekshiruvga tushadi.
+        language:
+          material.language && (LANGUAGES as readonly string[]).includes(material.language)
+            ? material.language
+            : '',
         publishYear: material.publishYear ?? null,
         publishPlace: material.publishPlace ?? '',
-        country: material.country ?? '',
+        country:
+          material.country && (COUNTRIES as readonly string[]).includes(material.country)
+            ? material.country
+            : '',
         pageCount: material.pageCount ?? null,
         status: material.status,
         selectedPages: null,
@@ -860,6 +865,93 @@ export function MaterialFormPage() {
   // AI hali ishlayapti — forma ochiq, lekin maydonlar loading holatida
   const aiLoading = isEdit && material?.status === 'pending'
 
+  // ── Jonli muqova ko'rinishi ──────────────────────────────────────────────
+  // Muqovada chiziladigan maydonlar o'zgarganda (debounce bilan) worker'dan
+  // yangi preview so'raladi va o'ng ustundagi rasm darhol yangilanadi.
+  // Forma saqlangan holatiga qaytsa preview o'chib, asl muqova qaytadi.
+  const watchedTitle = watch('title')
+  const watchedAuthors = watch('authors')
+  const watchedPublishYear = watch('publishYear')
+  const watchedPublishPlace = watch('publishPlace')
+  const watchedCountry = watch('country')
+
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(null)
+  const [coverPreviewLoading, setCoverPreviewLoading] = useState(false)
+  const coverPreviewUrlRef = useRef<string | null>(null)
+  const coverPreviewAbortRef = useRef<AbortController | null>(null)
+
+  const applyCoverPreviewUrl = useCallback((url: string | null) => {
+    if (coverPreviewUrlRef.current) URL.revokeObjectURL(coverPreviewUrlRef.current)
+    coverPreviewUrlRef.current = url
+    setCoverPreviewUrl(url)
+  }, [])
+
+  // Serialized signatures make change detection trivial: preview is needed
+  // exactly while the form's cover fields differ from the saved material's.
+  const previewSig = JSON.stringify({
+    title: watchedTitle ?? '',
+    authors: watchedAuthors ?? [],
+    publishYear: watchedPublishYear ?? null,
+    publishPlace: watchedPublishPlace ?? '',
+    country: watchedCountry ?? '',
+  } satisfies CoverPreviewFields)
+  // savedSig — formaning reset() dagi boshlang'ich holatini aynan aks ettiradi
+  // (Til/Davlat ro'yxatda bo'lmasa bo'shga tushiriladi), aks holda forma
+  // yuklanishida "o'zgargan" ko'rinib, keraksiz jonli preview chaqirilardi.
+  const savedSig = material
+    ? JSON.stringify({
+        title: material.title ?? '',
+        authors: (material.authors ?? []).map(abbreviateAuthor),
+        publishYear: material.publishYear ?? null,
+        publishPlace: material.publishPlace ?? '',
+        country:
+          material.country && (COUNTRIES as readonly string[]).includes(material.country)
+            ? material.country
+            : '',
+      } satisfies CoverPreviewFields)
+    : null
+
+  useEffect(() => {
+    if (!isEdit || aiLoading || savedSig === null) return
+
+    if (previewSig === savedSig) {
+      // Forma saqlangan holatga teng — asl muqovani ko'rsatamiz
+      coverPreviewAbortRef.current?.abort()
+      setCoverPreviewLoading(false)
+      applyCoverPreviewUrl(null)
+      return
+    }
+
+    const fields = JSON.parse(previewSig) as CoverPreviewFields
+    if (!fields.title) return
+
+    const timer = setTimeout(() => {
+      coverPreviewAbortRef.current?.abort()
+      const controller = new AbortController()
+      coverPreviewAbortRef.current = controller
+      setCoverPreviewLoading(true)
+      getCoverPreview(fields, controller.signal)
+        .then((blob) => {
+          if (controller.signal.aborted) return
+          applyCoverPreviewUrl(URL.createObjectURL(blob))
+          setCoverPreviewLoading(false)
+        })
+        .catch(() => {
+          // Worker javob bermasa jim o'tamiz — oxirgi ko'rinish qolaveradi
+          if (!controller.signal.aborted) setCoverPreviewLoading(false)
+        })
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [previewSig, savedSig, isEdit, aiLoading, applyCoverPreviewUrl])
+
+  useEffect(
+    () => () => {
+      coverPreviewAbortRef.current?.abort()
+      if (coverPreviewUrlRef.current) URL.revokeObjectURL(coverPreviewUrlRef.current)
+    },
+    [],
+  )
+
   const createMutation = useMutation({
     mutationFn: (values: FormValues) =>
       createMaterial({
@@ -897,8 +989,8 @@ export function MaterialFormPage() {
         publishPlace: values.publishPlace || undefined,
         country: values.country || undefined,
         pageCount: values.pageCount ?? undefined,
-        // Saqlash = yakuniy tasdiq: material shu yerda READY bo'ladi
-        status: 'ready',
+        // Holat admin tanlagan qiymat bilan saqlanadi (Qoralama yoki Tayyor).
+        status: values.status,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['materials'] })
@@ -920,6 +1012,18 @@ export function MaterialFormPage() {
     }
   }
 
+  // Validatsiya yiqilganda: sabab toast'da aytiladi va birinchi qizil
+  // belgilangan maydonga silliq scroll qilinadi — admin nima bo'sh
+  // qolganini qidirib yurmasin.
+  const onInvalid = () => {
+    addToast("Saqlanmadi — qizil belgilangan maydonlarni to'ldiring", 'error')
+    setTimeout(() => {
+      document
+        .querySelector('#material-form p[role="alert"]')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 80)
+  }
+
   const pageTitle = isEdit ? 'Materialni tahrirlash' : 'Yangi material'
 
   if (isEdit && matLoading) {
@@ -939,16 +1043,37 @@ export function MaterialFormPage() {
       title={pageTitle}
       actions={
         isEdit ? (
-          <Button variant="secondary" size="sm" onClick={() => navigate('/materials')}>
-            Bekor qilish
-          </Button>
+          // Holat tanlagich + yagona "Saqlash" tugmasi. AI hali tahlil
+          // qilayotgan bo'lsa (aiLoading) status avtomatik "Tayyorlanmoqda"
+          // bo'lgani uchun tanlagichni yashiramiz va saqlashni bloklaymiz.
+          <div className="flex items-center gap-3">
+            {!aiLoading && (
+              <Controller
+                name="status"
+                control={control}
+                render={({ field }) => (
+                  <StatusSelect value={field.value} onChange={field.onChange} />
+                )}
+              />
+            )}
+            <Button
+              size="sm"
+              loading={isBusy}
+              disabled={aiLoading}
+              onClick={() => {
+                void handleSubmit(onSubmit, onInvalid)()
+              }}
+            >
+              Saqlash
+            </Button>
+          </div>
         ) : (
           <Button
             size="sm"
             loading={isBusy}
             disabled={pagePrepPending || mediaUploading}
             onClick={() => {
-              void handleSubmit(onSubmit)()
+              void handleSubmit(onSubmit, onInvalid)()
             }}
           >
             Keyingi
@@ -972,7 +1097,7 @@ export function MaterialFormPage() {
       <form
         id="material-form"
         onSubmit={(e) => {
-          void handleSubmit(onSubmit)(e)
+          void handleSubmit(onSubmit, onInvalid)(e)
         }}
         noValidate
         className="w-full flex-1 flex flex-col"
@@ -1049,8 +1174,16 @@ export function MaterialFormPage() {
                         {...field}
                         value={field.value ?? ''}
                         placeholder={aiLoading ? "Ma'lumot olinmoqda..." : 'Sarlavha'}
-                        className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                        aria-invalid={errors.title ? true : undefined}
+                        className={`w-full bg-bg-elevated border-2 rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60 ${
+                          errors.title ? 'border-[#9b2c2c]' : 'border-border'
+                        }`}
                       />
+                      {errors.title && (
+                        <p className="text-xs text-[#9b2c2c]" role="alert">
+                          {errors.title.message}
+                        </p>
+                      )}
                     </div>
                   )}
                 />
@@ -1068,8 +1201,16 @@ export function MaterialFormPage() {
                           aiLoading ? "Ma'lumot olinmoqda..." : 'Materialning qisqa marketing tavsifi'
                         }
                         rows={3}
-                        className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all resize-y disabled:bg-bg-sunken disabled:opacity-60"
+                        aria-invalid={errors.blurb ? true : undefined}
+                        className={`w-full bg-bg-elevated border-2 rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all resize-y disabled:bg-bg-sunken disabled:opacity-60 ${
+                          errors.blurb ? 'border-[#9b2c2c]' : 'border-border'
+                        }`}
                       />
+                      {errors.blurb && (
+                        <p className="text-xs text-[#9b2c2c]" role="alert">
+                          {errors.blurb.message}
+                        </p>
+                      )}
                     </div>
                   )}
                 />
@@ -1120,7 +1261,10 @@ export function MaterialFormPage() {
                             onChange={(e) =>
                               field.onChange(e.target.value ? parseInt(e.target.value, 10) : null)
                             }
-                            className="w-full appearance-none bg-bg-elevated border-2 border-border rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                            aria-invalid={errors.publishYear ? true : undefined}
+                            className={`w-full appearance-none bg-bg-elevated border-2 rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60 ${
+                              errors.publishYear ? 'border-[#9b2c2c]' : 'border-border'
+                            }`}
                           >
                             <option value="">— Tanlang —</option>
                             {Array.from(
@@ -1145,7 +1289,9 @@ export function MaterialFormPage() {
                           </svg>
                         </div>
                         {errors.publishYear && (
-                          <p className="text-xs text-[#9b2c2c]">{errors.publishYear.message}</p>
+                          <p className="text-xs text-[#9b2c2c]" role="alert">
+                            {errors.publishYear.message}
+                          </p>
                         )}
                       </div>
                     )}
@@ -1163,8 +1309,16 @@ export function MaterialFormPage() {
                           {...field}
                           value={field.value ?? ''}
                           placeholder={aiLoading ? "Ma'lumot olinmoqda..." : 'Toshkent'}
-                          className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                          aria-invalid={errors.publishPlace ? true : undefined}
+                          className={`w-full bg-bg-elevated border-2 rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60 ${
+                            errors.publishPlace ? 'border-[#9b2c2c]' : 'border-border'
+                          }`}
                         />
+                        {errors.publishPlace && (
+                          <p className="text-xs text-[#9b2c2c]" role="alert">
+                            {errors.publishPlace.message}
+                          </p>
+                        )}
                       </div>
                     )}
                   />
@@ -1190,10 +1344,15 @@ export function MaterialFormPage() {
                             if (n >= 1) field.onChange(n)
                           }}
                           placeholder="256"
-                          className="w-full bg-bg-elevated border-2 border-border rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                          aria-invalid={errors.pageCount ? true : undefined}
+                          className={`w-full bg-bg-elevated border-2 rounded-md px-[14px] py-[10px] text-base text-text-primary placeholder:text-text-muted focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60 ${
+                            errors.pageCount ? 'border-[#9b2c2c]' : 'border-border'
+                          }`}
                         />
                         {errors.pageCount && (
-                          <p className="text-xs text-[#9b2c2c]">{errors.pageCount.message}</p>
+                          <p className="text-xs text-[#9b2c2c]" role="alert">
+                            {errors.pageCount.message}
+                          </p>
                         )}
                       </div>
                     )}
@@ -1209,7 +1368,10 @@ export function MaterialFormPage() {
                           <select
                             value={field.value ?? ''}
                             onChange={(e) => field.onChange(e.target.value || null)}
-                            className="w-full appearance-none bg-bg-elevated border-2 border-border rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                            aria-invalid={errors.language ? true : undefined}
+                            className={`w-full appearance-none bg-bg-elevated border-2 rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60 ${
+                              errors.language ? 'border-[#9b2c2c]' : 'border-border'
+                            }`}
                           >
                             <option value="">— Tanlang —</option>
                             {LANGUAGES.map((l) => (
@@ -1230,6 +1392,11 @@ export function MaterialFormPage() {
                             />
                           </svg>
                         </div>
+                        {errors.language && (
+                          <p className="text-xs text-[#9b2c2c]" role="alert">
+                            {errors.language.message}
+                          </p>
+                        )}
                       </div>
                     )}
                   />
@@ -1244,7 +1411,10 @@ export function MaterialFormPage() {
                           <select
                             value={field.value ?? ''}
                             onChange={(e) => field.onChange(e.target.value || null)}
-                            className="w-full appearance-none bg-bg-elevated border-2 border-border rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60"
+                            aria-invalid={errors.country ? true : undefined}
+                            className={`w-full appearance-none bg-bg-elevated border-2 rounded-md pl-[14px] pr-10 py-[10px] text-base text-text-primary focus:outline-none focus:border-focus transition-all disabled:bg-bg-sunken disabled:opacity-60 ${
+                              errors.country ? 'border-[#9b2c2c]' : 'border-border'
+                            }`}
                           >
                             <option value="">— Tanlang —</option>
                             {COUNTRIES.map((c) => (
@@ -1265,6 +1435,11 @@ export function MaterialFormPage() {
                             />
                           </svg>
                         </div>
+                        {errors.country && (
+                          <p className="text-xs text-[#9b2c2c]" role="alert">
+                            {errors.country.message}
+                          </p>
+                        )}
                       </div>
                     )}
                   />
@@ -1304,25 +1479,30 @@ export function MaterialFormPage() {
                   />
                 </div>
               </div>
-
-              {/* Actions */}
-              <div className="flex gap-3">
-                <Button type="submit" loading={isBusy}>
-                  Saqlash
-                </Button>
-                <Button type="button" variant="secondary" onClick={() => navigate('/materials')}>
-                  Bekor qilish
-                </Button>
-              </div>
             </div>
 
             {/* Right column — muqova rasmi */}
             <div className="sticky top-0">
-              {material?.coverUrl ? (
+              {coverPreviewUrl ? (
+                <div className="relative">
+                  <img
+                    src={coverPreviewUrl}
+                    alt="Muqova (jonli ko'rinish)"
+                    className={`w-full rounded-lg object-cover shadow-card transition-opacity ${
+                      coverPreviewLoading ? 'opacity-60' : ''
+                    }`}
+                  />
+                  <span className="absolute top-2 right-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white">
+                    Jonli ko'rinish
+                  </span>
+                </div>
+              ) : material?.coverUrl ? (
                 <img
                   src={material.coverUrl}
                   alt="Muqova"
-                  className="w-full rounded-lg object-cover shadow-card"
+                  className={`w-full rounded-lg object-cover shadow-card transition-opacity ${
+                    coverPreviewLoading ? 'opacity-60' : ''
+                  }`}
                 />
               ) : aiLoading ? (
                 /* AI hali ishlayapti — muqova tayyor bo'lguncha skelet */

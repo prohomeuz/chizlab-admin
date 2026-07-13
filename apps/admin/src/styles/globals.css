@@ -43,6 +43,18 @@
 }
 
 /* =========================================================
+   VALIDATION ERROR BORDER
+   Bo'sh yoki noto'g'ri to'ldirilgan maydon "Saqlash" bosilganda
+   qizil chegara bilan belgilanadi. aria-invalid barcha input/select/
+   textarea va TagInput o'ramini qamrab oladi. Bu qoida qatlamsiz +
+   !important bo'lgani uchun Tailwind utility'lari va `divide-*`
+   selektorlari ustidan ishonchli g'olib chiqadi.
+   ========================================================= */
+[aria-invalid='true'] {
+  border-color: #9b2c2c !important;
+}
+
+/* =========================================================
    CUSTOM CURSOR
    Applied globally; falls back on touch/coarse-pointer devices
    ========================================================= */

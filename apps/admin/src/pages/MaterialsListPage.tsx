@@ -68,7 +68,7 @@ function ProgressBadge({ material }: { material: Material }) {
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 const STATUS_OPTIONS: { value: MaterialStatus | ''; label: string }[] = [
   { value: '', label: 'Barcha statuslar' },
-  { value: 'pending', label: 'Kutilmoqda' },
+  { value: 'pending', label: 'Tayyorlanmoqda' },
   { value: 'draft', label: 'Qoralama' },
   { value: 'ready', label: 'Tayyor' },
 ];

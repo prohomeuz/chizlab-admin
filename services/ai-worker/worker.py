@@ -9,10 +9,12 @@ Run: python worker.py
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import signal
 import sys
+import time
 
 import fitz  # PyMuPDF
 import redis.asyncio as aioredis
@@ -40,8 +42,10 @@ logger = logging.getLogger(__name__)
 AI_JOBS_KEY = "chizlab:ai:pending"
 PAGE_PREP_JOBS_KEY = "chizlab:pages:pending"
 COVER_JOBS_KEY = "chizlab:cover:pending"
+COVER_PREVIEW_JOBS_KEY = "chizlab:cover-preview:pending"
 MAX_RETRIES = 3
 PROGRESS_TTL = 3600  # seconds
+PREVIEW_REPLY_TTL = 30  # seconds
 
 
 async def _set_progress(redis_client: aioredis.Redis, material_id: str, pct: int) -> None:
@@ -230,8 +234,6 @@ async def process_cover_job(
 ) -> None:
     """Regenerate a material's cover from its current (admin-edited) fields
     so the cover always matches what the form shows."""
-    import time
-
     logger.info("Regenerating cover: material=%s title=%r", material_id, title)
     try:
         cover_bytes = cover_generator.generate_cover(
@@ -283,6 +285,53 @@ async def _run_cover_jobs_loop(
         )
 
 
+async def _run_cover_preview_jobs_loop(
+    redis_client: aioredis.Redis, stop_event: asyncio.Event
+) -> None:
+    """Render on-demand cover previews for the admin form's live view.
+
+    Each job carries a unique reply key; the rendered JPEG is pushed back
+    base64-encoded so the API (blocked on BRPOP of that key) can return it to
+    the browser synchronously. An empty reply signals a render failure — the
+    reply is always pushed so the API never waits out its full timeout.
+    """
+    while not stop_event.is_set():
+        result = await redis_client.brpop(COVER_PREVIEW_JOBS_KEY, timeout=2)
+        if result is None:
+            continue
+
+        _, raw = result
+        try:
+            job = json.loads(raw)
+            reply_key: str = job["replyKey"]
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error("Malformed cover-preview job payload: %r — %s", raw, e)
+            continue
+
+        expires_at = job.get("expiresAt")
+        if expires_at and time.time() * 1000 > expires_at:
+            # The API has already given up waiting on this reply key (e.g. the
+            # job sat in the queue while the worker was down) — skip rendering.
+            continue
+
+        payload = b""
+        try:
+            cover_bytes = await asyncio.to_thread(
+                cover_generator.generate_cover,
+                title=job.get("title") or "",
+                authors=job.get("authors") or [],
+                publish_year=job.get("publishYear"),
+                publish_place=job.get("publishPlace"),
+                country=job.get("country"),
+            )
+            payload = base64.b64encode(cover_bytes)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Cover preview render failed: %s", exc)
+
+        await redis_client.lpush(reply_key, payload)
+        await redis_client.expire(reply_key, PREVIEW_REPLY_TTL)
+
+
 async def _run_ai_jobs_loop(
     redis_client: aioredis.Redis, provider: AIProvider, stop_event: asyncio.Event
 ) -> None:
@@ -331,10 +380,11 @@ async def main() -> None:
 
     redis_client = await aioredis.from_url(settings.redis_url)
     logger.info(
-        "Worker started. Listening on Redis lists '%s', '%s' and '%s' …",
+        "Worker started. Listening on Redis lists '%s', '%s', '%s' and '%s' …",
         AI_JOBS_KEY,
         PAGE_PREP_JOBS_KEY,
         COVER_JOBS_KEY,
+        COVER_PREVIEW_JOBS_KEY,
     )
 
     loop = asyncio.get_running_loop()
@@ -357,6 +407,7 @@ async def main() -> None:
             _run_ai_jobs_loop(redis_client, provider, stop_event),
             _run_page_prep_jobs_loop(redis_client, stop_event),
             _run_cover_jobs_loop(redis_client, stop_event),
+            _run_cover_preview_jobs_loop(redis_client, stop_event),
         )
     finally:
         await redis_client.aclose()
