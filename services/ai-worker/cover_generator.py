@@ -36,6 +36,14 @@ TITLE_MIN_SIZE = 16
 TITLE_MAX_LINES = 3
 TITLE_LINE_SPACING = 1.2
 
+# The decorative circles baked into the template start intruding into the
+# title column (ref x 20..357) at around ref y 200 — measured from
+# cover-empty.jpg. The title block must never render past this line,
+# regardless of how many lines TITLE_MAX_LINES would otherwise allow, or its
+# text sits on top of the artwork. A few units of margin are kept above it.
+TITLE_SAFE_BOTTOM_REF = 200
+TITLE_BOTTOM_MARGIN_REF = 8
+
 
 def _abbreviate_author(name: str) -> str:
     """
@@ -196,29 +204,40 @@ def _fit_title(
     font_path: str,
     max_width: int,
     sy: float,
+    y_title: int,
 ) -> tuple[ImageFont.FreeTypeFont, list[str], int]:
     """
     Pick the largest title font size (TITLE_MAX_SIZE → TITLE_MIN_SIZE, in
     reference units) at which the word-wrapped title fits within
-    TITLE_MAX_LINES lines and no line overflows the text area. Short titles
-    render large; long titles shrink instead of wrapping past three lines.
-    Only when even the minimum size can't fit is the text ellipsized.
+    TITLE_MAX_LINES lines, no line overflows the text area, and the wrapped
+    block's real rendered height fits above TITLE_SAFE_BOTTOM_REF without
+    touching the decorative circles. Short titles render large; long titles
+    shrink — both in font size and, if needed, effective line count — instead
+    of spilling into the artwork below. Only when even the minimum size still
+    can't fit is the text ellipsized.
 
     Returns (font, lines, line_height_px).
     """
+    max_h = int((TITLE_SAFE_BOTTOM_REF - TITLE_BOTTOM_MARGIN_REF) * sy) - y_title
     font = ImageFont.truetype(font_path, int(TITLE_MIN_SIZE * sy))
     lines: list[str] = [""]
     for size_ref in range(TITLE_MAX_SIZE, TITLE_MIN_SIZE - 1, -1):
         font = ImageFont.truetype(font_path, int(size_ref * sy))
         lines = _wrap_text(draw, title, font, max_width)
-        if len(lines) <= TITLE_MAX_LINES and all(
-            draw.textbbox((0, 0), line, font=font)[2] <= max_width for line in lines
+        line_h = int(size_ref * TITLE_LINE_SPACING * sy)
+        if (
+            len(lines) <= TITLE_MAX_LINES
+            and len(lines) * line_h <= max_h
+            and all(draw.textbbox((0, 0), line, font=font)[2] <= max_width for line in lines)
         ):
-            return font, lines, int(size_ref * TITLE_LINE_SPACING * sy)
+            return font, lines, line_h
 
-    # Even the minimum size can't fit — hard-cap at 3 lines with an ellipsis.
-    lines = _truncate_to_max_lines(draw, lines, TITLE_MAX_LINES, font, max_width, max_width)
-    return font, lines, int(TITLE_MIN_SIZE * TITLE_LINE_SPACING * sy)
+    # Even the minimum size can't fit — hard-cap lines to whatever the
+    # available height allows (at least one) with an ellipsis on the last.
+    line_h = int(TITLE_MIN_SIZE * TITLE_LINE_SPACING * sy)
+    max_lines = max(1, min(TITLE_MAX_LINES, max_h // line_h))
+    lines = _truncate_to_max_lines(draw, lines, max_lines, font, max_width, max_width)
+    return font, lines, line_h
 
 
 def generate_cover(
@@ -309,7 +328,7 @@ def generate_cover(
 
     # Title — large, word-wrapped, font size adapted to fit max 3 lines
     font_title, lines, line_h = _fit_title(
-        draw, title, str(ASSETS_DIR / "Gilroy-Medium.ttf"), max_w, sy
+        draw, title, str(ASSETS_DIR / "Gilroy-Medium.ttf"), max_w, sy, y_title
     )
     for i, line in enumerate(lines):
         draw.text((x_title, y_title + i * line_h), line, font=font_title, fill=(255, 255, 255))
