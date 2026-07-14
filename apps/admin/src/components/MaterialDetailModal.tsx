@@ -12,16 +12,30 @@ const MATERIAL_TYPE_LABELS: Record<MaterialType, string> = {
   presentation: 'Taqdimot',
 };
 
+const UZ_MONTHS = [
+  'yanvar',
+  'fevral',
+  'mart',
+  'aprel',
+  'may',
+  'iyun',
+  'iyul',
+  'avgust',
+  'sentabr',
+  'oktabr',
+  'noyabr',
+  'dekabr',
+];
+
 function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('uz-UZ', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  } catch {
-    return iso;
-  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const day = date.getDate();
+  const month = UZ_MONTHS[date.getMonth()];
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-yil ${day}-${month} | ${hours}:${minutes}`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
