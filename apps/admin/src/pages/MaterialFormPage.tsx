@@ -897,8 +897,8 @@ export function MaterialFormPage() {
         publishPlace: values.publishPlace || undefined,
         country: values.country || undefined,
         pageCount: values.pageCount ?? undefined,
-        // Saqlash = yakuniy tasdiq: material shu yerda READY bo'ladi
-        status: 'ready',
+        // Admin "Qoralama" yoki "Tayyor"ni tanlaydi — status shunga qarab saqlanadi.
+        status: values.status,
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['materials'] })
@@ -939,9 +939,39 @@ export function MaterialFormPage() {
       title={pageTitle}
       actions={
         isEdit ? (
-          <Button variant="secondary" size="sm" onClick={() => navigate('/materials')}>
-            Bekor qilish
-          </Button>
+          <div className="flex items-center gap-3">
+            <Controller
+              name="status"
+              control={control}
+              render={({ field }) => (
+                <div className="relative">
+                  <select
+                    value={field.value === 'pending' ? 'draft' : field.value}
+                    onChange={field.onChange}
+                    disabled={aiLoading}
+                    aria-label="Material statusi"
+                    className="appearance-none pl-3 pr-9 py-[10px] text-sm bg-bg-elevated border border-border rounded-md text-text-primary focus:outline-none focus:border-focus transition-all disabled:opacity-50"
+                  >
+                    <option value="draft">Qoralama</option>
+                    <option value="ready">Tayyor</option>
+                  </select>
+                  <svg className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted pointer-events-none" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </div>
+              )}
+            />
+            <Button
+              size="sm"
+              loading={isBusy}
+              disabled={aiLoading}
+              onClick={() => {
+                void handleSubmit(onSubmit)()
+              }}
+            >
+              Saqlash
+            </Button>
+          </div>
         ) : (
           <Button
             size="sm"
@@ -1303,16 +1333,6 @@ export function MaterialFormPage() {
                     )}
                   />
                 </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-3">
-                <Button type="submit" loading={isBusy}>
-                  Saqlash
-                </Button>
-                <Button type="button" variant="secondary" onClick={() => navigate('/materials')}>
-                  Bekor qilish
-                </Button>
               </div>
             </div>
 
