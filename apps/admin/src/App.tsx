@@ -7,6 +7,7 @@ import { ToastContainer } from './components/Toast';
 import { LoginPage } from './pages/LoginPage';
 import { MaterialsListPage } from './pages/MaterialsListPage';
 import { MaterialFormPage } from './pages/MaterialFormPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,6 +55,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <MaterialFormPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/analytics"
+        element={
+          <ProtectedRoute>
+            <AnalyticsPage />
           </ProtectedRoute>
         }
       />
