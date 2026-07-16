@@ -12,9 +12,11 @@ import { CategoriesModule } from './categories/categories.module';
 import { UploadModule } from './upload/upload.module';
 import { PublicModule } from './public/public.module';
 import { InternalModule } from './internal/internal.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { Material } from './materials/material.entity';
 import { Category } from './categories/category.entity';
 import { Admin } from './auth/admin.entity';
+import { AnalyticsEvent } from './analytics/analytics-event.entity';
 import * as path from 'path';
 
 @Module({
@@ -45,7 +47,7 @@ import * as path from 'path';
           username: cfg.dbUser,
           password: cfg.dbPassword,
           database: cfg.dbName,
-          entities: [Material, Category, Admin],
+          entities: [Material, Category, Admin, AnalyticsEvent],
           migrations: [path.join(__dirname, 'migrations', '*{.ts,.js}')],
           migrationsRun: true,
           migrationsTransactionMode: 'each',
@@ -68,6 +70,7 @@ import * as path from 'path';
     UploadModule,
     PublicModule,
     InternalModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}

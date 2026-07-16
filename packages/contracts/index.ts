@@ -371,5 +371,31 @@ export interface PublicMaterialsQuery {
   search?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Analytics
+// ---------------------------------------------------------------------------
+
+export type AnalyticsEventType = 'pageview' | 'click';
+
+/** One tracked event sent by the public site to POST /api/public/analytics/events. */
+export interface AnalyticsEventInput {
+  type: AnalyticsEventType;
+  path: string;
+  label?: string;
+  sessionId: string;
+}
+
+/** Response shape of GET /api/admin/analytics/summary. */
+export interface AnalyticsSummary {
+  rangeDays: number;
+  totals: {
+    pageviews: number;
+    clicks: number;
+    uniqueSessions: number;
+  };
+  topPages: { path: string; count: number }[];
+  topClicks: { label: string; path: string; count: number }[];
+}
+
 // All types above are already exported at their declaration site.
 // No re-export block needed — import directly from '@contracts/index'.
