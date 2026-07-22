@@ -143,20 +143,27 @@ export class TelegramService {
     caption: string,
     coverUrl: string | null,
   ): Promise<void> {
-    if (coverUrl) {
-      await this.callApi('editMessageMedia', {
-        chat_id: chatId,
-        message_id: Number(messageId),
-        media: { type: 'photo', media: coverUrl, caption, parse_mode: 'HTML' },
-      });
-    } else {
-      await this.callApi('editMessageText', {
-        chat_id: chatId,
-        message_id: Number(messageId),
-        text: caption,
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-      });
+    try {
+      if (coverUrl) {
+        await this.callApi('editMessageMedia', {
+          chat_id: chatId,
+          message_id: Number(messageId),
+          media: { type: 'photo', media: coverUrl, caption, parse_mode: 'HTML' },
+        });
+      } else {
+        await this.callApi('editMessageText', {
+          chat_id: chatId,
+          message_id: Number(messageId),
+          text: caption,
+          parse_mode: 'HTML',
+          disable_web_page_preview: true,
+        });
+      }
+    } catch (err) {
+      // The post is already identical — Telegram rejects a no-op edit. That's
+      // success for our purposes: don't fall through to a delete + resend.
+      if (String(err).includes('message is not modified')) return;
+      throw err;
     }
   }
 
