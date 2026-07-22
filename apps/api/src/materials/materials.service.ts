@@ -11,6 +11,7 @@ import { UpdateMaterialDto } from './dto/update-material.dto';
 import { ListMaterialsDto } from './dto/list-materials.dto';
 import { PaginatedResponseDto } from '../common/pagination.dto';
 import { AiJobService } from './ai-job.service';
+import { TelegramService } from '../telegram/telegram.service';
 
 @Injectable()
 export class MaterialsService {
@@ -20,7 +21,18 @@ export class MaterialsService {
     @InjectRepository(Material)
     private readonly materialRepo: Repository<Material>,
     private readonly aiJobService: AiJobService,
+    private readonly telegramService: TelegramService,
   ) {}
+
+  /**
+   * Reconcile the Telegram channel post in the background. Fire-and-forget:
+   * a slow or unreachable Telegram must never block or fail an admin action.
+   */
+  private syncTelegram(materialId: string): void {
+    void this.telegramService.syncMaterial(materialId).catch((err: unknown) => {
+      this.logger.error(`Telegram sync failed for material=${materialId}`, err);
+    });
+  }
 
   async create(dto: CreateMaterialDto): Promise<Material> {
     const material = this.materialRepo.create({
@@ -169,12 +181,17 @@ export class MaterialsService {
       }
     }
 
+    // Publish / edit / unpublish the channel post to mirror the new state.
+    this.syncTelegram(saved.id);
+
     return saved;
   }
 
   async remove(id: string): Promise<void> {
     const material = await this.findOne(id);
     await this.materialRepo.softRemove(material);
+    // Remove the channel post for the now-deleted material.
+    this.syncTelegram(id);
   }
 
   // ---------------------------------------------------------------------------

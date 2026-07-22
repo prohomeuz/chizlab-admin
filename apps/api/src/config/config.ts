@@ -30,6 +30,11 @@ export interface AppConfig {
   publicAllowedOrigins: string[];
   internalCallbackSecret: string;
   corsOrigins: string[];
+  // Public site (used to build "Batafsil" links in Telegram posts)
+  publicSiteUrl: string;
+  // Telegram channel notifications
+  telegramBotToken: string;
+  telegramChannelId: string;
 }
 
 export default registerAs('app', (): AppConfig => ({
@@ -68,4 +73,8 @@ export default registerAs('app', (): AppConfig => ({
     .split(',')
     .map(o => o.trim())
     .filter(Boolean),
+
+  publicSiteUrl: (process.env['PUBLIC_SITE_URL'] ?? 'https://chizlab.uz').replace(/\/+$/, ''),
+  telegramBotToken: process.env['TELEGRAM_BOT_TOKEN'] ?? '',
+  telegramChannelId: process.env['TELEGRAM_CHANNEL_ID'] ?? '',
 }));

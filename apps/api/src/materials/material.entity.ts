@@ -106,6 +106,19 @@ export class Material {
   @Column({ type: 'tsvector', nullable: true, select: false, name: 'search_vector' })
   searchVector!: unknown;
 
+  /**
+   * Telegram channel message this material is currently published as.
+   * NULL when the material has never been posted or its post was deleted
+   * (e.g. after unpublishing or soft-deleting). Kept in sync on every
+   * update so the channel post mirrors the material.
+   */
+  @Column({ type: 'bigint', nullable: true, name: 'telegram_message_id' })
+  telegramMessageId!: number | null;
+
+  /** Chat/channel id the message above lives in (as configured at post time). */
+  @Column({ type: 'text', nullable: true, name: 'telegram_chat_id' })
+  telegramChatId!: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

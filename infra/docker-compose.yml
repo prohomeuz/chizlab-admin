@@ -161,6 +161,10 @@ services:
       # Security
       PUBLIC_ALLOWED_ORIGINS: ${PUBLIC_ALLOWED_ORIGINS:-chizlab.uz,www.chizlab.uz,api.chizlab.uz}
       INTERNAL_CALLBACK_SECRET: ${INTERNAL_CALLBACK_SECRET}
+      # Telegram channel notifications (leave empty to disable)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHANNEL_ID: ${TELEGRAM_CHANNEL_ID:-}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://chizlab.uz}
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
     healthcheck:
