@@ -36,10 +36,11 @@ TITLE_MIN_SIZE = 16
 TITLE_MAX_LINES = 3
 TITLE_LINE_SPACING = 1.2
 
-# Author block leading. The font's ascent+descent alone packs the lines with
-# no gap at all, which reads as cramped on the cover; this multiplier adds a
-# little air between author lines without changing the font size.
-AUTHORS_LINE_SPACING = 1.3
+# Gap drawn between two author names on the same line. A single space packs
+# the names too tightly after the comma, so they are joined with a wider gap.
+# Only used between whole names — a name that has to be split across lines
+# still falls back to normal single-space word joins.
+AUTHORS_SEPARATOR = "  "
 
 
 def _abbreviate_author(name: str) -> str:
@@ -102,7 +103,7 @@ def _wrap_authors_raw(
         return bbox[2] - bbox[0] <= width_limit
 
     for token in tokens:
-        test = (current + " " + token).strip()
+        test = (current + AUTHORS_SEPARATOR + token).strip() if current else token
         if _fits(test):
             current = test
             continue
@@ -181,7 +182,7 @@ def _fit_authors(
     while True:
         font = ImageFont.truetype(font_path, size)
         ascent, descent = font.getmetrics()
-        line_h = max(int((ascent + descent) * AUTHORS_LINE_SPACING), 1)
+        line_h = max(ascent + descent, 1)
         max_lines = max(1, available_h // line_h)
 
         lines = _wrap_authors_raw(draw, tokens, font, first_line_width, rest_width)
