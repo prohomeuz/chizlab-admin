@@ -21,12 +21,17 @@ export type MaterialStatus = 'pending' | 'draft' | 'ready';
 
 /** Type/format of a Material. */
 export type MaterialType =
-  | 'textbook_electronic'
-  | 'thesis'
-  | 'article'
   | 'textbook'
+  | 'study_guide'
   | 'monograph'
-  | 'presentation';
+  | 'article'
+  | 'thesis'
+  | 'methodical_guide'
+  | 'project_album'
+  | 'patent'
+  | 'state_standard'
+  | 'abstract'
+  | 'course';
 
 // ---------------------------------------------------------------------------
 // Core entities
