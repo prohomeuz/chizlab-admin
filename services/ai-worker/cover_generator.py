@@ -41,7 +41,7 @@ TITLE_LINE_SPACING = 1.2
 # is actually displayed, so whole names are joined with a wider gap. Only used
 # between names — a name that has to be split across lines still falls back to
 # normal single-space word joins.
-AUTHORS_SEPARATOR = "    "
+AUTHORS_SEPARATOR = "   "
 
 
 def _abbreviate_author(name: str) -> str:
