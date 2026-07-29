@@ -28,13 +28,18 @@ JPEG_QUALITY = 80
 # the icon instead of sitting above it.
 ICON_CENTER_Y_REF = 33.4
 
-# Title sizing: the largest size (in reference units) that lets the wrapped
-# title fit within TITLE_MAX_LINES wins — short titles render big, long
-# titles shrink instead of spilling past three lines.
+# Title sizing: the largest size (in reference units) at which the wrapped
+# title fits both TITLE_MAX_LINES and the vertical room above the rings wins —
+# short titles render big, long titles shrink instead of spilling downwards.
 TITLE_MAX_SIZE = 52
 TITLE_MIN_SIZE = 16
 TITLE_MAX_LINES = 3
 TITLE_LINE_SPACING = 1.2
+
+# Top of the decorative rings baked into the template (measured on
+# cover-empty.jpg: the outermost arc peaks at ~211 reference units). The title
+# block must end above this line so text never sits on top of the rings.
+TITLE_BOTTOM_REF = 205
 
 # Gap drawn between two author names on the same line. A single space packs
 # the names too tightly after the comma to be readable at the size the cover
@@ -202,30 +207,39 @@ def _fit_title(
     title: str,
     font_path: str,
     max_width: int,
+    available_h: int,
     sy: float,
 ) -> tuple[ImageFont.FreeTypeFont, list[str], int]:
     """
     Pick the largest title font size (TITLE_MAX_SIZE → TITLE_MIN_SIZE, in
     reference units) at which the word-wrapped title fits within
-    TITLE_MAX_LINES lines and no line overflows the text area. Short titles
-    render large; long titles shrink instead of wrapping past three lines.
-    Only when even the minimum size can't fit is the text ellipsized.
+    TITLE_MAX_LINES lines, no line overflows the text area, and the whole
+    block stays inside available_h — the room between the title's top edge
+    and the rings. Short titles render large; long ones shrink rather than
+    drop onto the rings. Only when even the minimum size can't fit is the
+    text ellipsized.
 
     Returns (font, lines, line_height_px).
     """
     font = ImageFont.truetype(font_path, int(TITLE_MIN_SIZE * sy))
     lines: list[str] = [""]
+    line_h = int(TITLE_MIN_SIZE * TITLE_LINE_SPACING * sy)
+
     for size_ref in range(TITLE_MAX_SIZE, TITLE_MIN_SIZE - 1, -1):
         font = ImageFont.truetype(font_path, int(size_ref * sy))
+        line_h = int(size_ref * TITLE_LINE_SPACING * sy)
         lines = _wrap_text(draw, title, font, max_width)
-        if len(lines) <= TITLE_MAX_LINES and all(
-            draw.textbbox((0, 0), line, font=font)[2] <= max_width for line in lines
+        if (
+            len(lines) <= TITLE_MAX_LINES
+            and len(lines) * line_h <= available_h
+            and all(draw.textbbox((0, 0), line, font=font)[2] <= max_width for line in lines)
         ):
-            return font, lines, int(size_ref * TITLE_LINE_SPACING * sy)
+            return font, lines, line_h
 
-    # Even the minimum size can't fit — hard-cap at 3 lines with an ellipsis.
-    lines = _truncate_to_max_lines(draw, lines, TITLE_MAX_LINES, font, max_width, max_width)
-    return font, lines, int(TITLE_MIN_SIZE * TITLE_LINE_SPACING * sy)
+    # Even the minimum size can't fit — cap at whatever still clears the rings.
+    max_lines = max(1, min(TITLE_MAX_LINES, available_h // line_h))
+    lines = _truncate_to_max_lines(draw, lines, max_lines, font, max_width, max_width)
+    return font, lines, line_h
 
 
 def generate_cover(
@@ -314,9 +328,11 @@ def generate_cover(
     if joy_yil:
         draw.text((int(357 * sx), icon_cy), joy_yil, font=font_small, fill=(255, 255, 255), anchor="rm")
 
-    # Title — large, word-wrapped, font size adapted to fit max 3 lines
+    # Title — large, word-wrapped, font size adapted so it fits max 3 lines
+    # and always ends above the rings.
+    title_available_h = max(int(TITLE_BOTTOM_REF * sy) - y_title, int(TITLE_MIN_SIZE * sy))
     font_title, lines, line_h = _fit_title(
-        draw, title, str(ASSETS_DIR / "Gilroy-Medium.ttf"), max_w, sy
+        draw, title, str(ASSETS_DIR / "Gilroy-Medium.ttf"), max_w, title_available_h, sy
     )
     for i, line in enumerate(lines):
         draw.text((x_title, y_title + i * line_h), line, font=font_title, fill=(255, 255, 255))
