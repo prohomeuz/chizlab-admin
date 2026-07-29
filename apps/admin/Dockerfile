@@ -19,6 +19,12 @@ RUN npm ci
 # Copy rest of admin source
 COPY apps/admin/ .
 
+# Drop any local .env that leaked into the build context. In this image the
+# API is reached through the nginx proxy below (/api → api:3000), so
+# VITE_API_URL must stay empty — a developer's local value (e.g.
+# http://localhost:3000) would otherwise get baked into the bundle.
+RUN rm -f .env .env.*
+
 # Build (vite alias ../../packages/contracts → /app/packages/contracts ✓)
 RUN npm run build
 
