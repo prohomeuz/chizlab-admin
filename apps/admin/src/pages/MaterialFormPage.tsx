@@ -23,12 +23,17 @@ import { useToastContext } from '../context/ToastContext'
 // ---------------------------------------------------------------------------
 
 const MATERIAL_TYPE_OPTIONS: { value: MaterialType; label: string }[] = [
-  { value: 'textbook_electronic', label: "Elektron o'quv qo'llanma" },
-  { value: 'thesis', label: 'Tezis' },
-  { value: 'article', label: 'Maqola' },
   { value: 'textbook', label: 'Darslik' },
+  { value: 'study_guide', label: "O'quv qo'llanma" },
   { value: 'monograph', label: 'Monografiya' },
-  { value: 'presentation', label: 'Taqdimot' },
+  { value: 'article', label: 'Ilmiy maqola' },
+  { value: 'thesis', label: 'Tezis' },
+  { value: 'methodical_guide', label: "Metodik qo'llanma" },
+  { value: 'project_album', label: 'Loyiha albomi / Katalog' },
+  { value: 'patent', label: 'Patent va mualliflik guvohnomasi' },
+  { value: 'state_standard', label: 'Davlat standartlari (GOST)' },
+  { value: 'abstract', label: 'Avtoreferat' },
+  { value: 'course', label: 'Kurs' },
 ]
 
 const ACCEPTED_MIME =
@@ -59,12 +64,17 @@ function isAccepted(file: File): boolean {
 // ---------------------------------------------------------------------------
 
 const MATERIAL_TYPES = [
-  'textbook_electronic',
-  'thesis',
-  'article',
   'textbook',
+  'study_guide',
   'monograph',
-  'presentation',
+  'article',
+  'thesis',
+  'methodical_guide',
+  'project_album',
+  'patent',
+  'state_standard',
+  'abstract',
+  'course',
 ] as const
 
 const LANGUAGES = [

@@ -2,12 +2,17 @@ import { Material, MaterialType } from '../materials/material.entity';
 
 /** Uzbek labels for material types — mirrors the admin UI select options. */
 export const MATERIAL_TYPE_LABELS: Record<MaterialType, string> = {
-  [MaterialType.TEXTBOOK_ELECTRONIC]: "Elektron o'quv qo'llanma",
-  [MaterialType.THESIS]: 'Tezis',
-  [MaterialType.ARTICLE]: 'Maqola',
   [MaterialType.TEXTBOOK]: 'Darslik',
+  [MaterialType.STUDY_GUIDE]: "O'quv qo'llanma",
   [MaterialType.MONOGRAPH]: 'Monografiya',
-  [MaterialType.PRESENTATION]: 'Taqdimot',
+  [MaterialType.ARTICLE]: 'Ilmiy maqola',
+  [MaterialType.THESIS]: 'Tezis',
+  [MaterialType.METHODICAL_GUIDE]: "Metodik qo'llanma",
+  [MaterialType.PROJECT_ALBUM]: 'Loyiha albomi / Katalog',
+  [MaterialType.PATENT]: 'Patent va mualliflik guvohnomasi',
+  [MaterialType.STATE_STANDARD]: 'Davlat standartlari (GOST)',
+  [MaterialType.ABSTRACT]: 'Avtoreferat',
+  [MaterialType.COURSE]: 'Kurs',
 };
 
 /** Telegram caption hard limit (UTF-16 code units of the visible text). */

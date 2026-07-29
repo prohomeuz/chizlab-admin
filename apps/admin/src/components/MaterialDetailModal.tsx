@@ -4,12 +4,17 @@ import { StatusBadge } from './StatusBadge';
 import { Button } from './Button';
 
 const MATERIAL_TYPE_LABELS: Record<MaterialType, string> = {
-  textbook_electronic: "Elektron o'quv qo'llanma",
-  thesis: 'Tezis',
-  article: 'Maqola',
   textbook: 'Darslik',
+  study_guide: "O'quv qo'llanma",
   monograph: 'Monografiya',
-  presentation: 'Taqdimot',
+  article: 'Ilmiy maqola',
+  thesis: 'Tezis',
+  methodical_guide: "Metodik qo'llanma",
+  project_album: 'Loyiha albomi / Katalog',
+  patent: 'Patent va mualliflik guvohnomasi',
+  state_standard: 'Davlat standartlari (GOST)',
+  abstract: 'Avtoreferat',
+  course: 'Kurs',
 };
 
 const UZ_MONTHS = [

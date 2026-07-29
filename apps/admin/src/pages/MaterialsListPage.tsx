@@ -75,21 +75,31 @@ const STATUS_OPTIONS: { value: MaterialStatus | ''; label: string }[] = [
 
 const MATERIAL_TYPE_OPTIONS: { value: MaterialType | ''; label: string }[] = [
   { value: '', label: 'Barcha turlar' },
-  { value: 'textbook_electronic', label: "Elektron o'quv qo'llanma" },
-  { value: 'thesis', label: 'Tezis' },
-  { value: 'article', label: 'Maqola' },
   { value: 'textbook', label: 'Darslik' },
+  { value: 'study_guide', label: "O'quv qo'llanma" },
   { value: 'monograph', label: 'Monografiya' },
-  { value: 'presentation', label: 'Taqdimot' },
+  { value: 'article', label: 'Ilmiy maqola' },
+  { value: 'thesis', label: 'Tezis' },
+  { value: 'methodical_guide', label: "Metodik qo'llanma" },
+  { value: 'project_album', label: 'Loyiha albomi / Katalog' },
+  { value: 'patent', label: 'Patent va mualliflik guvohnomasi' },
+  { value: 'state_standard', label: 'Davlat standartlari (GOST)' },
+  { value: 'abstract', label: 'Avtoreferat' },
+  { value: 'course', label: 'Kurs' },
 ];
 
 const MATERIAL_TYPE_LABELS: Record<MaterialType, string> = {
-  textbook_electronic: "Elektron o'quv q.",
-  thesis: 'Tezis',
-  article: 'Maqola',
   textbook: 'Darslik',
+  study_guide: "O'quv qo'll.",
   monograph: 'Monografiya',
-  presentation: 'Taqdimot',
+  article: 'Ilmiy maqola',
+  thesis: 'Tezis',
+  methodical_guide: "Metodik qo'll.",
+  project_album: 'Loyiha albomi',
+  patent: 'Patent',
+  state_standard: 'GOST',
+  abstract: 'Avtoreferat',
+  course: 'Kurs',
 };
 
 function useDebouncedValue<T>(value: T, delay: number): T {

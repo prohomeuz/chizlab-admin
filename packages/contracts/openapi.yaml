@@ -60,20 +60,30 @@ components:
     MaterialType:
       type: string
       enum:
-        - textbook_electronic
-        - thesis
-        - article
         - textbook
+        - study_guide
         - monograph
-        - presentation
+        - article
+        - thesis
+        - methodical_guide
+        - project_album
+        - patent
+        - state_standard
+        - abstract
+        - course
       description: |
         Type/format of the material document.
-        - `textbook_electronic` — Elektron o'quv qo'llanma
-        - `thesis`              — Tezis
-        - `article`             — Maqola
-        - `textbook`            — Darslik
-        - `monograph`           — Monografiya
-        - `presentation`        — Taqdimot
+        - `textbook`         — Darslik
+        - `study_guide`      — O'quv qo'llanma
+        - `monograph`        — Monografiya
+        - `article`          — Ilmiy maqola
+        - `thesis`           — Tezis
+        - `methodical_guide` — Metodik qo'llanma
+        - `project_album`    — Loyiha albomi / Katalog
+        - `patent`           — Patent va mualliflik guvohnomasi
+        - `state_standard`   — Davlat standartlari (GOST)
+        - `abstract`         — Avtoreferat
+        - `course`           — Kurs
 
     # --- Core entities -------------------------------------------------------
 
