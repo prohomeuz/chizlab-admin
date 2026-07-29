@@ -37,10 +37,11 @@ TITLE_MAX_LINES = 3
 TITLE_LINE_SPACING = 1.2
 
 # Gap drawn between two author names on the same line. A single space packs
-# the names too tightly after the comma, so they are joined with a wider gap.
-# Only used between whole names — a name that has to be split across lines
-# still falls back to normal single-space word joins.
-AUTHORS_SEPARATOR = "  "
+# the names too tightly after the comma to be readable at the size the cover
+# is actually displayed, so whole names are joined with a wider gap. Only used
+# between names — a name that has to be split across lines still falls back to
+# normal single-space word joins.
+AUTHORS_SEPARATOR = "    "
 
 
 def _abbreviate_author(name: str) -> str:
