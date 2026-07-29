@@ -17,12 +17,17 @@ export enum MaterialStatus {
 }
 
 export enum MaterialType {
-  TEXTBOOK_ELECTRONIC = 'textbook_electronic',
-  THESIS = 'thesis',
-  ARTICLE = 'article',
   TEXTBOOK = 'textbook',
+  STUDY_GUIDE = 'study_guide',
   MONOGRAPH = 'monograph',
-  PRESENTATION = 'presentation',
+  ARTICLE = 'article',
+  THESIS = 'thesis',
+  METHODICAL_GUIDE = 'methodical_guide',
+  PROJECT_ALBUM = 'project_album',
+  PATENT = 'patent',
+  STATE_STANDARD = 'state_standard',
+  ABSTRACT = 'abstract',
+  COURSE = 'course',
 }
 
 @Entity('materials')
