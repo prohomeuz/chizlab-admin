@@ -25,6 +25,22 @@
  *   --limit <n>     only the first n materials
  *   --id <uuid>     a single material (repeatable)
  *   --delay <ms>    pause between jobs (default 150) so the worker is not flooded
+ *
+ * Against the Docker stack (infra/docker-compose.yml): Postgres is published on
+ * 127.0.0.1:5435 but Redis is not published at all, so the queue is unreachable
+ * from the host. Forward it for the duration of the run:
+ *
+ *   docker run --rm -d --name chizlab_redis_fwd --network infra_app_network \
+ *     -p 127.0.0.1:6399:6379 alpine/socat \
+ *     tcp-listen:6379,fork,reuseaddr tcp-connect:redis:6379
+ *
+ *   DATABASE_PORT=5435 REDIS_PORT=6399 npm run covers:regenerate
+ *
+ *   docker rm -f chizlab_redis_fwd
+ *
+ * DATABASE_NAME/DATABASE_PASSWORD must match the stack's .env (POSTGRES_DB /
+ * POSTGRES_PASSWORD) — apps/api/.env is only used for running the API locally
+ * outside Docker and can differ.
  */
 import Redis from 'ioredis';
 import dataSource from '../database/typeorm.config';
