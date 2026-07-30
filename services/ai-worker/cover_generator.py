@@ -44,6 +44,13 @@ TITLE_LINE_SPACING = 1.2
 TITLE_SAFE_BOTTOM_REF = 200
 TITLE_BOTTOM_MARGIN_REF = 8
 
+# Bir muallif nomi bilan keyingisi orasidagi oraliq. Vergul + bitta bo'shliq
+# ismlarni bir-biriga juda yaqin ko'rsatadi va ular bitta uzun matnga
+# qo'shilib ketadi, shu bois oraliq uch bo'shliqqa kengaytirilgan. Faqat
+# ismlar orasiga qo'llanadi: bitta ismning ichidagi so'zlar (bosh harflar va
+# familiya) baribir bitta bo'shliq bilan ajratiladi.
+AUTHORS_GAP = "   "
+
 
 def _abbreviate_author(name: str) -> str:
     """
@@ -105,7 +112,7 @@ def _wrap_authors_raw(
         return bbox[2] - bbox[0] <= width_limit
 
     for token in tokens:
-        test = (current + " " + token).strip()
+        test = (current + AUTHORS_GAP + token).strip()
         if _fits(test):
             current = test
             continue
