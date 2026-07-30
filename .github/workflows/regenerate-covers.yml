@@ -19,10 +19,14 @@ on:
         description: "Faqat ro'yxatni ko'rish (belgini olib tashlasangiz haqiqatda qayta generatsiya qiladi)"
         type: boolean
         default: true
+      # Bu yerda `default` ataylab berilmagan. Agar `default: '3'` tursa,
+      # maydonni bo'shatib yuborish yordam bermaydi: GitHub bo'sh qiymat
+      # o'rniga standart qiymatni yuboradi va "hammasi" hech qachon
+      # ishlamaydi (shu tuzoqqa bir marta tushilgan — 3 ta muqova
+      # qayta chizilib, qolgani eski holida qolgan).
       limit:
-        description: "Nechta manba (bo'sh qoldirilsa — hammasi)"
+        description: "Nechta manba — bo'sh qoldirilsa hammasi, sinash uchun masalan 3"
         required: false
-        default: '3'
 
 # Ikki regeneratsiya bir vaqtda ketmasin: ikkalasi ham bitta navbatga yozadi.
 concurrency:
