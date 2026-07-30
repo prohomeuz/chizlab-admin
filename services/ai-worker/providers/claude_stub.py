@@ -70,6 +70,63 @@ _MAX_PAGES = 10
 _MAX_CHARS = 8000
 _MAX_BINARY_BYTES = 10 * 1024 * 1024  # 10 MB
 
+# Scanned-PDF rasterization limits. Claude downscales images whose long edge
+# exceeds 1568 px, so rendering above that only wastes bandwidth.
+_MAX_IMAGE_EDGE = 1568
+_JPEG_QUALITY = 80
+_MAX_IMAGE_PAYLOAD_BYTES = 8 * 1024 * 1024  # total raw JPEG budget per request
+
+
+def _render_pdf_pages(pdf_bytes: bytes, max_pages: int) -> list[bytes]:
+    """Rasterize the first `max_pages` pages of a PDF to JPEG bytes.
+
+    Used for scanned PDFs, where no text can be extracted. Rendering only the
+    first pages keeps the request small no matter how large the source file is —
+    the metadata we need (title, authors, year, place) lives on the cover and
+    imprint pages.
+    """
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        total_pages = doc.page_count
+        images: list[bytes] = []
+        payload = 0
+        for i in range(min(max_pages, total_pages)):
+            page = doc[i]
+            longest_edge = max(page.rect.width, page.rect.height) or 1
+            zoom = min(_MAX_IMAGE_EDGE / longest_edge, 3.0)
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+            jpg_bytes = pixmap.tobytes("jpeg", jpg_quality=_JPEG_QUALITY)
+            if payload + len(jpg_bytes) > _MAX_IMAGE_PAYLOAD_BYTES:
+                logger.warning(
+                    "Image payload budget reached after %d page(s); skipping the rest",
+                    len(images),
+                )
+                break
+            images.append(jpg_bytes)
+            payload += len(jpg_bytes)
+    finally:
+        doc.close()
+
+    logger.info(
+        "Rendered %d page(s) of scanned PDF to JPEG (%d bytes, %d total pages)",
+        len(images),
+        payload,
+        total_pages,
+    )
+    return images
+
+
+def _pdf_page_count(pdf_bytes: bytes) -> int | None:
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            return doc.page_count
+        finally:
+            doc.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not read PDF page count: %s", exc)
+        return None
+
 
 def _extract_pdf_text(pdf_bytes: bytes) -> str:
     """Extract text from the first _MAX_PAGES pages of a PDF. Returns '' for scanned/image-only PDFs."""
@@ -198,12 +255,7 @@ class ClaudeProvider:
             if extracted_text:
                 combined = f"{effective_prompt}\n\n--- HUJJAT MATNI (birinchi {_MAX_PAGES} bet) ---\n{extracted_text}"
                 content = [{"type": "text", "text": combined}]
-            else:
-                if len(media_bytes) > _MAX_BINARY_BYTES:
-                    raise ValueError(
-                        f"Skanerdan PDF juda katta: {len(media_bytes) / 1024 / 1024:.1f} MB "
-                        f"(max {_MAX_BINARY_BYTES // 1024 // 1024} MB). Matn ajratib bo'lmadi."
-                    )
+            elif len(media_bytes) <= _MAX_BINARY_BYTES:
                 logger.warning(
                     "Scanned PDF detected (%d bytes), sending as binary document block",
                     len(media_bytes),
@@ -213,6 +265,39 @@ class ClaudeProvider:
                     {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": data_b64}},
                     {"type": "text", "text": effective_prompt},
                 ]
+            else:
+                # Too large to send whole — rasterize the first pages instead, so
+                # file size no longer bounds what we can analyze.
+                logger.warning(
+                    "Scanned PDF too large for a document block (%.1f MB); "
+                    "falling back to page rasterization",
+                    len(media_bytes) / 1024 / 1024,
+                )
+                page_images = _render_pdf_pages(media_bytes, _MAX_PAGES)
+                if not page_images:
+                    raise ValueError(
+                        "Skanerdan PDF sahifalarini rasmga o'girib bo'lmadi — "
+                        "fayl buzilgan bo'lishi mumkin."
+                    )
+                total_pages = _pdf_page_count(media_bytes)
+                note = (
+                    f"[Skanerdan olingan PDF. Quyida hujjatning birinchi "
+                    f"{len(page_images)} beti rasm ko'rinishida berilgan"
+                    + (f"; hujjatda jami {total_pages} bet bor." if total_pages else ".")
+                    + "]"
+                )
+                content = [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": base64.standard_b64encode(img).decode(),
+                        },
+                    }
+                    for img in page_images
+                ]
+                content.append({"type": "text", "text": f"{note}\n\n{effective_prompt}"})
 
         elif mime_type in _DOCX_MIMES:
             extracted_text = _extract_docx_text(media_bytes)
