@@ -12,13 +12,13 @@ name: Muqovalarni qayta generatsiya qilish
 on:
   workflow_dispatch:
     inputs:
-      mode:
-        description: "Rejim — avval dry-run bilan ro'yxatni ko'rish tavsiya etiladi"
-        type: choice
-        options:
-          - dry-run
-          - run
-        default: dry-run
+      # Belgilangan holatda hech narsa o'zgarmaydi, faqat ro'yxat chiqadi.
+      # Xavfsiz tomoni shu bo'lgani uchun sukut bo'yicha yoqilgan —
+      # haqiqiy generatsiya uchun belgini olib tashlash kerak.
+      dry_run:
+        description: "Faqat ro'yxatni ko'rish (belgini olib tashlasangiz haqiqatda qayta generatsiya qiladi)"
+        type: boolean
+        default: true
       limit:
         description: "Nechta manba (bo'sh qoldirilsa — hammasi)"
         required: false
@@ -37,16 +37,16 @@ jobs:
       - name: SSH orqali ishga tushirish
         uses: appleboy/ssh-action@v1.0.3
         env:
-          MODE: ${{ inputs.mode }}
+          DRY_RUN: ${{ inputs.dry_run }}
           LIMIT: ${{ inputs.limit }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           password: ${{ secrets.VPS_PASSWORD }}
-          # MODE/LIMIT skript matniga qo'shib yuborilmaydi, env sifatida
+          # DRY_RUN/LIMIT skript matniga qo'shib yuborilmaydi, env sifatida
           # o'tkaziladi — aks holda kiritilgan qiymat shell buyrug'iga
           # aralashib ketishi mumkin edi.
-          envs: MODE,LIMIT
+          envs: DRY_RUN,LIMIT
           command_timeout: 60m
           script: |
             set -eu
@@ -76,14 +76,14 @@ jobs:
             # Prod image `npm ci --omit=dev` bilan qurilgani uchun ichida
             # ts-node yo'q — kompilyatsiya qilingan skript ishlatiladi.
             ARGS=""
-            if [ "${MODE}" = "dry-run" ]; then ARGS="--dry-run"; fi
+            if [ "${DRY_RUN}" = "true" ]; then ARGS="--dry-run"; fi
             if [ -n "${LIMIT}" ]; then ARGS="${ARGS} --limit ${LIMIT}"; fi
 
             echo "=== regenerate-covers.js ${ARGS} ==="
             # shellcheck disable=SC2086
             docker exec chizlab_api node dist/scripts/regenerate-covers.js ${ARGS}
 
-            if [ "${MODE}" = "dry-run" ]; then
+            if [ "${DRY_RUN}" = "true" ]; then
               echo "Dry-run — navbatga hech narsa qo'yilmadi."
               exit 0
             fi
