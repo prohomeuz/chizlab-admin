@@ -688,11 +688,21 @@ function TagInput({
 // Author name abbreviation: "Raxmonjonov Xasan Aliyevich" → "X. A. Raxmonjonov"
 // ---------------------------------------------------------------------------
 
+// "M.R.Radjabov" → "M. R. Radjabov" — put a space after every initial so
+// abbreviated names read the same way regardless of how they were typed or
+// extracted by the AI. The rule keys off the dot rather than the letter before
+// it, so multi-letter initials ("Sh.", "Yu.") and Uzbek letters ("G'.") work
+// too. A trailing dot is left alone — there is nothing to separate it from.
+function spaceOutInitials(name: string): string {
+  return name.replace(/\.(?=\S)/g, '. ').replace(/\s+/g, ' ').trim()
+}
+
 function abbreviateAuthor(name: string): string {
-  const parts = name.trim().split(/\s+/)
-  if (parts.length < 2) return name
-  // Already abbreviated if first word ends with "." (e.g. "A. Tilegenov", "X.A. Raxmonjonov")
-  if (parts[0]?.endsWith('.')) return name
+  const spaced = spaceOutInitials(name)
+  const parts = spaced.split(' ')
+  if (parts.length < 2) return spaced
+  // Already abbreviated if first word ends with "." (e.g. "A. Tilegenov", "X. A. Raxmonjonov")
+  if (parts[0]?.endsWith('.')) return spaced
   const [surname, ...given] = parts
   const initials = given
     .map((p) => p[0]?.toUpperCase())

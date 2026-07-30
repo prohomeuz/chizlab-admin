@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -52,16 +53,30 @@ TITLE_BOTTOM_MARGIN_REF = 8
 AUTHORS_GAP = "   "
 
 
+def _space_out_initials(name: str) -> str:
+    """
+    "M.R.Radjabov" → "M. R. Radjabov" — put a space after every initial so
+    abbreviated names read the same way regardless of how they were typed
+    or extracted. Multi-letter initials ("Sh.", "Yu.") and Uzbek letters
+    ("G'.", "O'.") are covered too, since the rule keys off the dot rather
+    than the letter before it. A dot at the very end of the string is left
+    alone — there is nothing to separate it from.
+    """
+    return re.sub(r"\s+", " ", re.sub(r"\.(?=\S)", ". ", name)).strip()
+
+
 def _abbreviate_author(name: str) -> str:
     """
     "Raxmonjonov Xasan Aliyevich" → "X. A. Raxmonjonov" — the same rule the
     admin form applies to author inputs, so the cover shows names exactly
     as they appear in the form. Names already containing an initial
-    ("A. Tilegenov", "X.A. Raxmonjonov") pass through unchanged.
+    ("A. Tilegenov", "X.A. Raxmonjonov") keep their order and only get
+    their initials spaced out.
     """
-    parts = name.strip().split()
+    name = _space_out_initials(name)
+    parts = name.split()
     if len(parts) < 2:
-        return name.strip()
+        return name
     if parts[0].endswith("."):
         return " ".join(parts)
     surname, *given = parts

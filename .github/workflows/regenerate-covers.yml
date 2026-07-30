@@ -27,6 +27,14 @@ on:
       limit:
         description: "Nechta manba — bo'sh qoldirilsa hammasi, sinash uchun masalan 3"
         required: false
+      # Bazadagi muallif ismlarini tekislash ("M.R.Radjabov" →
+      # "M. R. Radjabov"). Muqovadan oldin ishlaydi, shunda yangi rasmlar
+      # to'g'rilangan ismlar bilan chiziladi. Sukut bo'yicha o'chirilgan —
+      # bu bazani o'zgartiradi, muqova chizishdan farqli.
+      normalize_names:
+        description: "Avval bazadagi muallif ismlaridagi bosh harflarni tekislash"
+        type: boolean
+        default: false
 
 # Ikki regeneratsiya bir vaqtda ketmasin: ikkalasi ham bitta navbatga yozadi.
 concurrency:
@@ -43,6 +51,7 @@ jobs:
         env:
           DRY_RUN: ${{ inputs.dry_run }}
           LIMIT: ${{ inputs.limit }}
+          NORMALIZE_NAMES: ${{ inputs.normalize_names }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
@@ -50,7 +59,7 @@ jobs:
           # DRY_RUN/LIMIT skript matniga qo'shib yuborilmaydi, env sifatida
           # o'tkaziladi — aks holda kiritilgan qiymat shell buyrug'iga
           # aralashib ketishi mumkin edi.
-          envs: DRY_RUN,LIMIT
+          envs: DRY_RUN,LIMIT,NORMALIZE_NAMES
           command_timeout: 60m
           script: |
             set -eu
@@ -79,6 +88,19 @@ jobs:
 
             # Prod image `npm ci --omit=dev` bilan qurilgani uchun ichida
             # ts-node yo'q — kompilyatsiya qilingan skript ishlatiladi.
+            #
+            # Ismlarni tekislash muqovadan oldin bajariladi: skript navbatga
+            # bazadagi joriy qiymatlarni yozadi, shu bois tartib teskari
+            # bo'lsa muqovalar hamon eski imloda chizilardi.
+            if [ "${NORMALIZE_NAMES}" = "true" ]; then
+              echo "=== normalize-author-names.js ==="
+              if [ "${DRY_RUN}" = "true" ]; then
+                docker exec chizlab_api node dist/scripts/normalize-author-names.js --dry-run
+              else
+                docker exec chizlab_api node dist/scripts/normalize-author-names.js
+              fi
+            fi
+
             ARGS=""
             if [ "${DRY_RUN}" = "true" ]; then ARGS="--dry-run"; fi
             if [ -n "${LIMIT}" ]; then ARGS="${ARGS} --limit ${LIMIT}"; fi
