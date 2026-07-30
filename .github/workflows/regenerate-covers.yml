@@ -1,0 +1,103 @@
+# Muqovalarni qayta generatsiya qilish — qo'lda, GitHub UI'dan tugma bosib.
+#
+# Nega kerak: mavjud muqovalar allaqachon render qilingan JPEG fayllar. Muqova
+# generatori (cover_generator.py) o'zgarganda kod deploy bo'ladi, lekin eski
+# rasmlar o'z-o'zidan yangilanmaydi — ularni qaytadan chizib berish kerak.
+#
+# Bu workflow serverga kirib, avval ai-worker konteynerida yangi kod turganini
+# tekshiradi (image qayta build bo'lmagan bo'lsa, natija eski bo'lib qolardi),
+# so'ng regeneratsiya skriptini ishga tushiradi va navbat bo'shaguncha kutadi.
+name: Muqovalarni qayta generatsiya qilish
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Rejim — avval dry-run bilan ro'yxatni ko'rish tavsiya etiladi"
+        type: choice
+        options:
+          - dry-run
+          - run
+        default: dry-run
+      limit:
+        description: "Nechta manba (bo'sh qoldirilsa — hammasi)"
+        required: false
+        default: '3'
+
+# Ikki regeneratsiya bir vaqtda ketmasin: ikkalasi ham bitta navbatga yozadi.
+concurrency:
+  group: regenerate-covers
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    name: Serverda qayta generatsiya
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH orqali ishga tushirish
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          MODE: ${{ inputs.mode }}
+          LIMIT: ${{ inputs.limit }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          # MODE/LIMIT skript matniga qo'shib yuborilmaydi, env sifatida
+          # o'tkaziladi — aks holda kiritilgan qiymat shell buyrug'iga
+          # aralashib ketishi mumkin edi.
+          envs: MODE,LIMIT
+          command_timeout: 60m
+          script: |
+            set -eu
+            cd /opt/chizlab-admin
+
+            if [ -n "${LIMIT}" ] && ! echo "${LIMIT}" | grep -qE '^[0-9]+$'; then
+              echo "limit butun son bo'lishi kerak, kelgan qiymat: ${LIMIT}"
+              exit 1
+            fi
+
+            # Docker trap: kod yangilangani bilan image qayta build qilinmasa,
+            # konteyner eski generator bilan ishlashda davom etadi va natija
+            # o'zgarmaydi. Shu bois avval tekshiriladi.
+            if docker exec chizlab_ai_worker grep -q 'AUTHORS_GAP' /app/cover_generator.py; then
+              echo "ai-worker yangi kod bilan ishlayapti."
+            else
+              echo "ai-worker eski kod bilan ishlayapti — image qayta build qilinadi."
+              docker compose -f infra/docker-compose.yml up -d --build ai-worker api
+              for i in $(seq 1 60); do
+                if docker exec chizlab_api node -e 'process.exit(0)' >/dev/null 2>&1; then break; fi
+                sleep 5
+              done
+              docker exec chizlab_ai_worker grep -q 'AUTHORS_GAP' /app/cover_generator.py
+              echo "qayta build tugadi."
+            fi
+
+            # Prod image `npm ci --omit=dev` bilan qurilgani uchun ichida
+            # ts-node yo'q — kompilyatsiya qilingan skript ishlatiladi.
+            ARGS=""
+            if [ "${MODE}" = "dry-run" ]; then ARGS="--dry-run"; fi
+            if [ -n "${LIMIT}" ]; then ARGS="${ARGS} --limit ${LIMIT}"; fi
+
+            echo "=== regenerate-covers.js ${ARGS} ==="
+            # shellcheck disable=SC2086
+            docker exec chizlab_api node dist/scripts/regenerate-covers.js ${ARGS}
+
+            if [ "${MODE}" = "dry-run" ]; then
+              echo "Dry-run — navbatga hech narsa qo'yilmadi."
+              exit 0
+            fi
+
+            # Skript faqat navbatga yozadi; rasmlarni ai-worker bittalab
+            # chizadi. Navbat bo'shaguncha kutiladi, aks holda workflow ish
+            # tugamasdan yashil bo'lib qolardi.
+            echo "=== navbat bo'shashini kutish ==="
+            for i in $(seq 1 240); do
+              LEFT=$(docker exec chizlab_redis redis-cli llen chizlab:cover:pending | tr -d '\r')
+              echo "navbatda: ${LEFT}"
+              if [ "${LEFT}" = "0" ]; then break; fi
+              sleep 15
+            done
+
+            echo "=== ai-worker log (oxirgi 60 qator) ==="
+            docker logs --tail 60 chizlab_ai_worker
